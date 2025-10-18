@@ -73,6 +73,19 @@ describe('PCAPNGParser', function() {
           assert.property(i, 'name', 'i has property name')
         })
     })
+    it('handles wireshark output', function() {
+      // Don't send to same parser as everything else, since ALL of the
+      // assertions above would still fire.
+      const parser = new PCAPNGParser()
+      let bufferStream3 = fs.createReadStream('./test/buffer/buffer3');
+      bufferStream3
+        .pipe(parser, { end: false })
+        .on('interface', (i) => {
+          assert.property(i, 'linkType', 'i has property linkType')
+          assert.property(i, 'snapLen', 'i has property snapLen')
+          // No name
+        })
+    })
   });
 });
 
