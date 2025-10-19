@@ -85,7 +85,7 @@ describe('PCAPNGParser', () => {
       const bufferStream3 = fs.createReadStream('./test/buffer/buffer3');
       bufferStream3
         .pipe(parser, {end: true})
-        .on('data', _d => {
+        .addListener('data', _d => {
           // Ignored, but needed to make close happen.
         })
         .on('close', resolve)
@@ -131,5 +131,13 @@ describe('PCAPNGParser', () => {
       parser.on('close', reject);
       bs.pipe(parser);
     }));
+
+    it('has typesafe events', () => {
+      const parser = new PCAPNGParser();
+      const packets = [];
+      const foo = d => packets.push(d);
+      parser.prependOnceListener('data', foo);
+      parser.removeListener('data', foo);
+    });
   });
 });
