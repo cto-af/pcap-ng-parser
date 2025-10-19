@@ -30,7 +30,7 @@ very straightforward in node.
 This module is available through the [npm registry](https://www.npmjs.com/).
 
 ```bash
-$ npm install pcap-ng-parser
+$ npm install @cto.af/pcap-ng-parser
 ```
 
 # Usage
@@ -152,6 +152,7 @@ The following things have been added:
 - Fixed critical RangeError bug
 - Made 'end' and 'finish' events fire correctly by removing broken _finish code.  Note that you have to add an event for 'data' to get these events or 'close'
   to fire, as with all Node Transform streams.
+- Converted to ES6
 - Added TypeScript types
 - Brought dependencies up to date
 - Added linting in @cto.af house style (to make maintenance easier)
