@@ -1,5 +1,6 @@
+
 # Overview
-PCAP-NG-Parser is a stream-based module to decode, print and analyze network traffic packets. With this module, you can read from an existing .pcapng file or connect it to an active stream. PCAP-NG-Parser is currently in active development. At this time, it supports only ethernet protocols from the output of [TCPDump v. 4.9.2](http://www.tcpdump.org/). 
+PCAP-NG-Parser is a stream-based module to decode, print and analyze network traffic packets. With this module, you can read from an existing .pcapng file or connect it to an active stream. PCAP-NG-Parser is currently in active development. At this time, it supports only ethernet protocols from the output of [TCPDump v. 4.9.2](http://www.tcpdump.org/).
 
 # Why capture packets in JavaScript
 
@@ -38,45 +39,47 @@ $ npm install pcap-ng-parser
 Here is a quick example of how to log out packets to the console from a valid .pcapng file named `myfile.pcapng`.
 
 ```javascript
-const PCAPNGParser = require('pcap-ng-parser')
-const pcapNgParser = new PCAPNGParser()
-const myFileStream = require('fs').createReadStream('./myfile.pcapng')
+import PCAPNGParser from '@cto.af/pcap-ng-parser';
+import fs from 'node:fs';
+
+const pcapNgParser = new PCAPNGParser();
+const myFileStream = fs.createReadStream('./myfile.pcapng');
 
 myFileStream.pipe(pcapNgParser)
-    .on('data', parsedPacket => {
-        console.log(parsedPacket)
-    })
-    .on('interface', interfaceInfo => {
-        console.log(interfaceInfo)
-    })
+  .on('data', parsedPacket => {
+    console.log(parsedPacket);
+  })
+  .on('interface', interfaceInfo => {
+    console.log(interfaceInfo);
+  });
 ```
 
-In the example above, we create a new Readable stream from our file and pipe the instance `pcapNgParser` which will read our packet data on the `_transform` event. 
+In the example above, we create a new Readable stream from our file and pipe the instance `pcapNgParser` which will read our packet data on the `_transform` event.
 
-## Via TCPDump 
+## Via TCPDump
 
 You can also pipe from TCPDump using `process.stdin` for a command line interaction.
 
 ```javascript
-const PCAPNGParser = require('pcap-ng-parser')
-const pcapNgParser = new PCAPNGParser()
+import PCAPNGParser from '@cto.af/pcap-ng-parser';
+const pcapNgParser = new PCAPNGParser();
 
 process.stdin.pipe(pcapNgParser)
-    .on('data', parsedPacket => {
-        console.log(parsedPacket)
-    })
-    .on('interface', interfaceInfo => {
-        console.log(interfaceInfo)
-    })
+  .on('data', parsedPacket => {
+    console.log(parsedPacket);
+  })
+  .on('interface', interfaceInfo => {
+    console.log(interfaceInfo);
+  });
 ```
 
 ```bash
 $ sudo tcpdump -w - | node exampleAbove.js
 ```
 
-Note that in order to utilize tcpdump you must be a superuser. Refer to [tcpdump documentation](http://www.tcpdump.org/manpages/tcpdump.1.html) for details. 
+Note that in order to utilize tcpdump you must be a superuser. Refer to [tcpdump documentation](http://www.tcpdump.org/manpages/tcpdump.1.html) for details.
 
-## Other Examples 
+## Other Examples
 
 Additional examples can be found in the [examples directory](./examples).
 
@@ -90,15 +93,15 @@ PCAPNGParser is an extension of the [stream.Transform class](https://nodejs.org/
 
 ## Event 'data'
 
-- `parsedPacket` | `Object` | The parsed packet data. The `data` event is emitted whenever the PCAPNGParser stream is ready to relinquish ownership of packet data to a consumer. 
+- `parsedPacket` | `Object` | The parsed packet data. The `data` event is emitted whenever the PCAPNGParser stream is ready to relinquish ownership of packet data to a consumer.
 
 Example of a `parsedPacket` object:
-```javascript
+```
 {
-    interfaceId: 0,
-    timestampHigh: 355515,
-    timestampLow: 1834438968,
-    data: <Buffer >
+  interfaceId: 0,
+  timestampHigh: 355515,
+  timestampLow: 1834438968,
+  data: <Buffer >
 }
 ```
 
@@ -114,11 +117,11 @@ Example of a `parsedPacket` object:
 - `interfaceInfo` | `object` | Interface Data. The `interface` event is emitted whenever the PCAPNGParser stream has encountered a new interface type not encountered yet.
 
 Example of an `interfaceInfo` object:
-```javascript
+```
 {
-    linkType: 1,
-    snapLen: 262144,
-    name: 'en0'
+  linkType: 1,
+  snapLen: 262144,
+  name: 'en0'
 }
 ```
 
@@ -136,6 +139,21 @@ Refer to the the [Contribution Guide](./docs/CONTRIBUTING.md) for details on how
 
 This module is covered under the BSD-3 Open Software License. Review the [License Documention](./docs/LICENSE.md) for more information.
 
+# Provenance
 
+This code was forked from https://github.com/CollinearGroup/pcap-ng-parser due
+to lack of maintenance.  To simplify matters, copyright remains with the
+original authors, including all changes made in this repository.  If the
+original authors contact me (easiest would be to file an issue here), all of
+this can be changed in any way that suits them.
 
+The following things have been added:
+
+- Fixed critical RangeError bug
+- Added TypeScript types
+- Brought dependencies up to date
+- Added linting in @cto.af house style (to make maintenance easier)
+- Added test coverage
+- Renamed 'master' branch to 'main'
+- Added Github Actions for testing and publishing
 
