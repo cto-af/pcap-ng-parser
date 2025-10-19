@@ -1,11 +1,21 @@
 {
-  "name": "pcap-ng-parser",
+  "name": "@cto.af/pcap-ng-parser",
   "version": "1.0.0",
   "description": "Node.js Module for parsing .pcapng files and tcpdump output.",
   "main": "./src/PCAPNGParser.js",
+  "types": "./types/PCAPNGParser.d.ts",
+  "type": "module",
+  "files": [
+    "src",
+    "types",
+    "docs/LICENSE.md"
+  ],
   "scripts": {
     "example": "node examples/index.js",
-    "test": "nyc mocha"
+    "test": "c8 mocha",
+    "ts": "tsc",
+    "lint": "eslint .",
+    "build": "npm run test && npm run ts && npm run lint"
   },
   "repository": {
     "type": "git",
@@ -25,15 +35,27 @@
     },
     {
       "name": "S. Everett Abbott"
+    },
+    {
+      "name": "Joe Hildebrand <joe-github@cursive.net>"
     }
   ],
   "license": "BSD-3",
-  "dependencies": {
-    "ether-frame": "^0.2.0"
-  },
   "devDependencies": {
-    "chai": "^4.1.2",
-    "mocha": "^5.2.0",
-    "nyc": "^12.0.2"
+    "@cto.af/eslint-config": "6.0.15",
+    "@eslint/markdown": "7.4.0",
+    "@types/node": "24.8.1",
+    "c8": "10.1.3",
+    "chai": "^6.2.0",
+    "eslint": "9.38.0",
+    "eslint-plugin-jsdoc": "61.1.4",
+    "eslint-plugin-mocha": "11.2.0",
+    "ether-frame": "^0.2.0",
+    "mocha": "^11.7.4",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@10.18.3",
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -1,4 +1,6 @@
-node_modules
-.vscode
 .nyc_output
+.vscode
+coverage/
+node_modules
 sample_capture
+types/
