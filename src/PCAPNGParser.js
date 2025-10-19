@@ -2,7 +2,7 @@ import * as BlockConfig from './BlockConfig.js';
 import {Buffer} from 'node:buffer';
 import {Transform} from 'node:stream';
 
-/** @import {TransformCallback} from 'node:stream' */
+/** @import {Readable, TransformCallback} from 'node:stream' */
 
 /**
  * @param {number} blockType
@@ -54,15 +54,43 @@ function processByteOrderMagic(byteOrderMagic) {
   throw new Error(`Unable to determine endian from ${byteOrderMagic.toString(16)}`);
 }
 
-export class PCAPNGParser extends Transform {
-  /** @import {BlockDescriptor} from './BlockConfig.js' */
+/**
+ * @typedef {object} Interface
+ * @property {number | undefined} [linkType] See https://datatracker.ietf.org/doc/html/draft-ietf-opsawg-pcaplinktype for info.
+ * @property {number | undefined} [snapLen] Capture length.
+ * @property {string} [name] Interface name.
+ */
 
-  /**
-   * @typedef {object} Interface
-   * @property {number | undefined} [linkType] See https://datatracker.ietf.org/doc/html/draft-ietf-opsawg-pcaplinktype for info.
-   * @property {number | undefined} [snapLen] Capture length.
-   * @property {string} [name] Interface name.
-   */
+/**
+ * @typedef {object} Packet
+ * @property {number} interfaceId
+ * @property {number} timestampHigh
+ * @property {number} timestampLow
+ * @property {Buffer} data
+ */
+
+/**
+ * @typedef {object} ParseEvents
+ * @property {[number]} blockType
+ * @property {[]} close
+ * @property {[Packet]} data
+ * @property {[]} drain
+ * @property {[]} end
+ * @property {[Error]} error
+ * @property {[]} finish
+ * @property {[Interface]} interface
+ * @property {[]} pause
+ * @property {[Readable]} pipe
+ * @property {[]} readable
+ * @property {[]} resume
+ * @property {[Readable]} unpipe
+ */
+
+export class PCAPNGParser extends Transform {
+  /** @type {Interface[]} */
+  interfaces = [];
+
+  /** @import {BlockDescriptor} from './BlockConfig.js' */
 
   /** @typedef {"BE" | "LE"} Endianess */
 
@@ -99,9 +127,6 @@ export class PCAPNGParser extends Transform {
    * @property {number} sectionLengthBottom
    */
 
-  /** @type {Interface[]} */
-  #interfaces = [];
-
   /** @type {Endianess} */
   #endianess = 'LE';
 
@@ -122,7 +147,7 @@ export class PCAPNGParser extends Transform {
    * Transform chunks of data into packets and interface events.
    *
    * @param {Buffer} chunk Data to process.
-   * @param {BufferEncoding} _encoding Ignored.
+   * @param {string} _encoding Ignored.
    * @param {TransformCallback} callback Called when finished with chunk.
    */
   _transform(chunk, _encoding, callback) {
@@ -145,7 +170,7 @@ export class PCAPNGParser extends Transform {
       } else if (pos + 8 >= buf.length) {
         // If we don't have enough to read the next block length save the
         // remaining data to be pre-pended to the next received data
-        this.#carryData = buf.slice(pos);
+        this.#carryData = buf.subarray(pos);
         pos = buf.length;
       } else {
         // Read block type and length
@@ -160,12 +185,15 @@ export class PCAPNGParser extends Transform {
         if (pos + block.data.blockTotalLength > buf.length) {
           // This block is bigger than the data we have so save it to be
           // pre-pended to the next received data
-          this.#carryData = buf.slice(pos);
+          this.#carryData = buf.subarray(pos);
           pos = buf.length;
         } else {
           // We have the entire block, go ahead and process itj
-          // @ts-expect-error
-          const blockData = buf.slice(pos, pos + block.data.blockTotalLength);
+          const blockData = buf.subarray(
+            pos,
+            // @ts-expect-error
+            pos + block.data.blockTotalLength
+          );
           const outputDataBlock = this.#processRawBlock(
             blockData,
             // @ts-expect-error
@@ -194,8 +222,83 @@ export class PCAPNGParser extends Transform {
     callback();
   }
 
-  _flush() {
-    this.emit('close');
+  // The following overrides of EventEmitter are here to make event code type
+  // safe, including the new events added by this class.
+
+  /**
+   * @template {keyof ParseEvents} K
+   * @param {K} eventName
+   * @param {ParseEvents[K]} args
+   * @returns {boolean}
+   */
+  emit(eventName, ...args) {
+    return super.emit(eventName, ...args);
+  }
+
+  /**
+   * @template {keyof ParseEvents} K
+   * @param {K} eventName
+   * @param {(...args: ParseEvents[K]) => void} listener
+   * @returns {this}
+   */
+  addListener(eventName, listener) {
+    super.addListener(eventName, listener);
+    return this;
+  }
+
+  /**
+   * @template {keyof ParseEvents} K
+   * @param {K} eventName
+   * @param {(...args: ParseEvents[K]) => void} listener
+   * @returns {this}
+   */
+  prependListener(eventName, listener) {
+    super.prependListener(eventName, listener);
+    return this;
+  }
+
+  /**
+   * @template {keyof ParseEvents} K
+   * @param {K} eventName
+   * @param {(...args: ParseEvents[K]) => void} listener
+   * @returns {this}
+   */
+  prependOnceListener(eventName, listener) {
+    super.prependOnceListener(eventName, listener);
+    return this;
+  }
+
+  /**
+   * @template {keyof ParseEvents} K
+   * @param {K} eventName
+   * @param {(...args: ParseEvents[K]) => void} listener
+   * @returns {this}
+   */
+  removeListener(eventName, listener) {
+    super.removeListener(eventName, listener);
+    return this;
+  }
+
+  /**
+   * @template {keyof ParseEvents} K
+   * @param {K} eventName
+   * @param {(...args: ParseEvents[K]) => void} listener
+   * @returns {this}
+   */
+  on(eventName, listener) {
+    super.on(eventName, listener);
+    return this;
+  }
+
+  /**
+   * @template {keyof ParseEvents} K
+   * @param {K} eventName
+   * @param {(...args: ParseEvents[K]) => void} listener
+   * @returns {this}
+   */
+  once(eventName, listener) {
+    super.once(eventName, listener);
+    return this;
   }
 
   /**
@@ -242,7 +345,7 @@ export class PCAPNGParser extends Transform {
         foundEndOption = true;
       } else {
         // @ts-expect-error
-        rb.data.data = buf.slice(pos - (rb.data.dataLength * 8), pos);
+        rb.data.data = buf.subarray(pos - (rb.data.dataLength * 8), pos);
         // @ts-expect-error
         options.push(rb.data);
       }
@@ -254,7 +357,7 @@ export class PCAPNGParser extends Transform {
    * @param {Buffer} blockData
    * @param {number} blockType
    * @returns {BlockData | undefined}
-   * @see http://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?url=https://raw.githubusercontent.com/pcapng/pcapng/master/draft-tuexen-opsawg-pcapng.xml&modeAsFormat=html/ascii&type=ascii#rfc.section.3.1
+   * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-general-block-structure
    */
   #processRawBlock(blockData, blockType) {
     if (blockType < 0) {
@@ -273,7 +376,7 @@ export class PCAPNGParser extends Transform {
       iData.linkType = idRes.data.linkType;
       iData.snapLen = idRes.data.snapLen;
       if (idRes.newOffset < blockData.length) {
-        const opts = this.#readOptions(blockData.slice(idRes.newOffset));
+        const opts = this.#readOptions(blockData.subarray(idRes.newOffset));
         opts.forEach(opt => {
           if (opt.code === 2) {
             iData.name = opt.data.toString('utf8')
@@ -285,7 +388,7 @@ export class PCAPNGParser extends Transform {
           }
         });
       }
-      this.#interfaces.push(iData);
+      this.interfaces.push(iData);
 
       // Notify listeners we got a new interface
       this.emit('interface', iData);
@@ -298,14 +401,14 @@ export class PCAPNGParser extends Transform {
         0
       );
 
-      id.data.data = blockData.slice(
+      id.data.data = blockData.subarray(
         id.newOffset,
         // @ts-expect-error
         id.newOffset + id.data.capturedPacketLength
       );
       return id.data;
     } else {
-      this.emit(`Block type: ${blockType}`);
+      this.emit('blockType', blockType);
     }
     return undefined;
   }

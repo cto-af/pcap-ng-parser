@@ -80,16 +80,22 @@ describe('PCAPNGParser', () => {
         });
     });
 
-    it('handles wireshark output', () => {
+    it('handles wireshark output', () => new Promise((resolve, reject) => {
+      const parser = new PCAPNGParser();
       const bufferStream3 = fs.createReadStream('./test/buffer/buffer3');
       bufferStream3
-        .pipe(pcapNgParser, {end: false})
+        .pipe(parser, {end: true})
+        .on('data', _d => {
+          // Ignored, but needed to make close happen.
+        })
+        .on('close', resolve)
+        .on('error', reject)
         .once('interface', i => {
           assert.property(i, 'linkType', 'i has property linkType');
           assert.property(i, 'snapLen', 'i has property snapLen');
           // No name
         });
-    });
+    }));
   });
 
   describe('edge cases', () => {
@@ -100,7 +106,29 @@ describe('PCAPNGParser', () => {
         assert.match(er.message, /Invalid file, block type/);
         resolve();
       });
-      parser.on('close', reject)
+      parser.on('close', reject);
+      bs.pipe(parser);
+    }));
+
+    it('handles bigendian', () => new Promise((resolve, reject) => {
+      const parser = new PCAPNGParser();
+      const bs = stream.Readable.from(Buffer.from('0A0D0D0A000000001A2B3C4D', 'hex'));
+      parser.on('error', er => {
+        assert.match(er.message, /The value of "offset" is out of range/);
+        resolve();
+      });
+      parser.on('close', reject);
+      bs.pipe(parser);
+    }));
+
+    it('handles bad endianess', () => new Promise((resolve, reject) => {
+      const parser = new PCAPNGParser();
+      const bs = stream.Readable.from(Buffer.from('0A0D0D0A000000001A2B3C4E', 'hex'));
+      parser.on('error', er => {
+        assert.match(er.message, /Unable to determine endian from/);
+        resolve();
+      });
+      parser.on('close', reject);
       bs.pipe(parser);
     }));
   });

@@ -108,8 +108,8 @@ Example of a `parsedPacket` object:
 ### Description of parsedPacket Properties
 
 * `interfaceId` | `integer` | The order in which PCAPNGParser has interacted with the interface. Interface can be accessed by accessing the `interfaces` property of the instance of the PCAPNGParser class.
-* `timestampHigh` | `integer` | The upper 32 bits of the 64-bit timestamp integer. Refer to the [PCAPNG documentation](http://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?url=https://raw.githubusercontent.com/pcapng/pcapng/master/draft-tuexen-opsawg-pcapng.xml&modeAsFormat=html/ascii&type=ascii#rfc.section.4.3) on this matter for more details.
-* `timestampLow` | `integer` | The lower 32 bits of the 64-bit timestamp integer. Refer to the [PCAPNG documentation](http://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?url=https://raw.githubusercontent.com/pcapng/pcapng/master/draft-tuexen-opsawg-pcapng.xml&modeAsFormat=html/ascii&type=ascii#rfc.section.4.3) on this matter for more details.
+* `timestampHigh` | `integer` | The upper 32 bits of the 64-bit timestamp integer. Refer to the [PCAPNG documentation](https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block) on this matter for more details.
+* `timestampLow` | `integer` | The lower 32 bits of the 64-bit timestamp integer. Refer to the [PCAPNG documentation](https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block) on this matter for more details.
 * `data` | `buffer` | A buffer with the data of the current packet.
 
 ## Event 'interface'
@@ -150,10 +150,12 @@ this can be changed in any way that suits them.
 The following things have been added:
 
 - Fixed critical RangeError bug
+- Made 'end' and 'finish' events fire correctly by removing broken _finish code.  Note that you have to add an event for 'data' to get these events or 'close'
+  to fire, as with all Node Transform streams.
 - Added TypeScript types
 - Brought dependencies up to date
 - Added linting in @cto.af house style (to make maintenance easier)
 - Added test coverage
 - Renamed 'master' branch to 'main'
 - Added Github Actions for testing and publishing
-
+- Fixed broken links in readme and code

@@ -10,7 +10,7 @@
 
 /**
  * @type {BlockDescriptor}
- * @see documentation at http://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?url=https://raw.githubusercontent.com/pcapng/pcapng/master/draft-tuexen-opsawg-pcapng.xml&modeAsFormat=html/ascii&type=ascii#rfc.section.4.1
+ * @see documentation at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-section-header-block
  */
 export const sectionHeaderBlock = {
   blockType: {
@@ -40,7 +40,7 @@ export const sectionHeaderBlock = {
 
 /**
  * @type {BlockDescriptor}
- * @see definition at http://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?url=https://raw.githubusercontent.com/pcapng/pcapng/master/draft-tuexen-opsawg-pcapng.xml&modeAsFormat=html/ascii&type=ascii#rfc.section.4.3
+ * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block
  */
 export const blockConfig = {
   blockType: {
@@ -54,7 +54,7 @@ export const blockConfig = {
 
 /**
  * @type {BlockDescriptor}
- * @see definition at http://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?url=https://raw.githubusercontent.com/pcapng/pcapng/master/draft-tuexen-opsawg-pcapng.xml&modeAsFormat=html/ascii&type=ascii#rfc.section.4.2
+ * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-interface-description-block
  */
 export const interfaceDescriptionBlockFormat = {
   blockType: {
@@ -76,7 +76,7 @@ export const interfaceDescriptionBlockFormat = {
 
 /**
  * @type {BlockDescriptor}
- * @see definition at http://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?url=https://raw.githubusercontent.com/pcapng/pcapng/master/draft-tuexen-opsawg-pcapng.xml&modeAsFormat=html/ascii&type=ascii#rfc.section.4.3
+ * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block
  */
 export const enhancedPacketBlockFormat = {
   blockType: {
@@ -107,7 +107,7 @@ export const enhancedPacketBlockFormat = {
 
 /**
  * @type {BlockDescriptor}
- * @see definition at http://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?url=https://raw.githubusercontent.com/pcapng/pcapng/master/draft-tuexen-opsawg-pcapng.xml&modeAsFormat=html/ascii&type=ascii#rfc.section.3.5
+ * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-options
  */
 export const optionBlock = {
   code: {

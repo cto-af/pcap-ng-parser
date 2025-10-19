@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Node.js Module for parsing .pcapng files and tcpdump output.",
   "main": "./src/PCAPNGParser.js",
-  "types": "./types",
+  "types": "./types/PCAPNGParser.d.ts",
   "type": "module",
   "files": [
     "src",
