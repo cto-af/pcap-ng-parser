@@ -152,7 +152,7 @@ The following things have been added:
 - Fixed critical RangeError bug
 - Made 'end' and 'finish' events fire correctly by removing broken _finish code.  Note that you have to add an event for 'data' to get these events or 'close'
   to fire, as with all Node Transform streams.
-- Converted to ES6
+- Converted to ES6 (BREAKING)
 - Added TypeScript types
 - Brought dependencies up to date
 - Added linting in @cto.af house style (to make maintenance easier)
@@ -160,3 +160,6 @@ The following things have been added:
 - Renamed 'master' branch to 'main'
 - Added Github Actions for testing and publishing
 - Fixed broken links in readme and code
+
+[![Tests](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml/badge.svg)](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml)
+[![codecov](https://codecov.io/gh/cto-af/pcap-ng-parser/graph/badge.svg?token=Akjw67WYcn)](https://codecov.io/gh/cto-af/pcap-ng-parser)
