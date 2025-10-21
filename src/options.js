@@ -1,5 +1,6 @@
 export const SECTION_HEADER = 0x0A0D0D0A;
 export const INTERFACE_DESCRIPTION = 0x1;
+export const SIMPLE_PACKET = 0x3;
 export const ENHANCED_PACKET = 0x6;
 
 /**
