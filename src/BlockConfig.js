@@ -60,6 +60,12 @@ export const interfaceDescriptionBlockFormat = {
   },
 };
 
+export const simplePacketFormat = {
+  originalPacketLength: {
+    size: 4,
+  },
+};
+
 /**
  * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block
  */

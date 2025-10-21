@@ -1,6 +1,10 @@
 import * as BlockConfig from './BlockConfig.js';
 import {
-  ENHANCED_PACKET, INTERFACE_DESCRIPTION, OPTION_NAMES, SECTION_HEADER,
+  ENHANCED_PACKET,
+  INTERFACE_DESCRIPTION,
+  OPTION_NAMES,
+  SECTION_HEADER,
+  SIMPLE_PACKET,
 } from './options.js';
 import {NoFilter} from 'nofilter';
 import {Transform} from 'node:stream';
@@ -35,8 +39,8 @@ function processByteOrderMagic(byteOrderMagic) {
 
 /**
  * @typedef {object} Interface
- * @property {number | undefined} linkType See https://datatracker.ietf.org/doc/html/draft-ietf-opsawg-pcaplinktype for info.
- * @property {number | undefined} snapLen Capture length.
+ * @property {number} linkType See https://datatracker.ietf.org/doc/html/draft-ietf-opsawg-pcaplinktype for info.
+ * @property {number} snapLen Capture length.
  * @property {string} [name] Interface name.
  * @property {Option[]} options All interface options.
  */
@@ -44,20 +48,9 @@ function processByteOrderMagic(byteOrderMagic) {
 /**
  * @typedef {object} Packet
  * @property {number} interfaceId
- * @property {number} timestampHigh
- * @property {number} timestampLow
- * @property {Buffer} data
- */
-
-/**
- * @typedef {object} EnhancedPacketBlockFormat
- * @property {number} [blockType]
- * @property {number} [blockTotalLength]
- * @property {number} interfaceId
- * @property {number} timestampHigh
- * @property {number} timestampLow
- * @property {number} [capturedPacketLength]
- * @property {number} [originalPacketLength]
+ * @property {number} [timestampHigh]
+ * @property {number} [timestampLow]
+ * @property {number} originalPacketLength
  * @property {Buffer} data
  * @property {Option[]} options
  */
@@ -226,20 +219,21 @@ export class PCAPNGParser extends Transform {
         if (!block) {
           break;
         }
+        this.#checkStart(block.blockType);
         switch (block.blockType) {
           case SECTION_HEADER:
             await this.#processSectionHeader(block);
             break;
           case INTERFACE_DESCRIPTION:
-            this.#checkStart(block.blockType);
             await this.#processInterface(block);
             break;
+          case SIMPLE_PACKET:
+            await this.#processSimplePacket(block);
+            break;
           case ENHANCED_PACKET:
-            this.#checkStart(block.blockType);
             await this.#processEnhancedPacket(block);
             break;
           default:
-            this.#checkStart(block.blockType);
             if (block.blockType >= 0) {
               this.emit('blockType', block.blockType);
             }
@@ -389,7 +383,7 @@ export class PCAPNGParser extends Transform {
    * @throws {Error} Invalid first block.
    */
   #checkStart(blockType) {
-    if (!this.#sectionHeader) {
+    if (!this.#sectionHeader && (blockType !== SECTION_HEADER)) {
       if (blockType === -1) {
         throw new Error('At least one Section Header required');
       }
@@ -429,15 +423,17 @@ export class PCAPNGParser extends Transform {
    */
   async #processInterface(block) {
     // Interface definition
-    /** @type {Interface} */
-    const iData = {};
     const idRes = await this.#readNumbers(
       block.data,
       BlockConfig.interfaceDescriptionBlockFormat
     );
-    iData.linkType = idRes.linkType;
-    iData.snapLen = idRes.snapLen;
-    iData.options = await this.#readOptions(block);
+
+    /** @type {Interface} */
+    const iData = {
+      linkType: idRes.linkType,
+      snapLen: idRes.snapLen,
+      options: await this.#readOptions(block),
+    };
     iData.options.forEach(opt => {
       if (opt.optionType === 2) {
         iData.name = /** @type {string} */ (opt.str);
@@ -451,6 +447,33 @@ export class PCAPNGParser extends Transform {
   }
 
   /**
+   * Simple Packet Block.
+   *
+   * @param {Block} block
+   * @returns {Promise<void>}
+   */
+  async #processSimplePacket(block) {
+    if (!this.interfaces.length) {
+      throw new Error('No interface for simple packet');
+    }
+    const [int] = this.interfaces;
+    const {originalPacketLength} = await this.#readNumbers(
+      block.data, BlockConfig.simplePacketFormat
+    );
+    const len = Math.min(originalPacketLength, int.snapLen);
+
+    /** @type {Packet} */
+    const pkt = {
+      interfaceId: 0,
+      originalPacketLength,
+      data: /** @type {Buffer} */(await block.data.read(len)),
+      options: [],
+    };
+    // Skip dealing with padding
+    this.push(pkt);
+  }
+
+  /**
    * Enhanced Packet Block.
    *
    * @param {Block} block
@@ -458,7 +481,7 @@ export class PCAPNGParser extends Transform {
    * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block
    */
   async #processEnhancedPacket(block) {
-    const id =
+    const {capturedPacketLength, ...id} =
       await this.#readNumbers(
         block.data,
         BlockConfig.enhancedPacketBlockFormat
@@ -468,14 +491,14 @@ export class PCAPNGParser extends Transform {
       throw new Error(`Invalid interface ID: ${id.interfaceId} >= ${this.interfaces.length}`);
     }
 
-    /** @type {EnhancedPacketBlockFormat} */
+    /** @type {Packet} */
     const pkt = {
       ...id,
-      data: /** @type {Buffer} */(block.data.read(id.capturedPacketLength)),
+      data: /** @type {Buffer} */(block.data.read(capturedPacketLength)),
       options: [],
     };
 
-    block.data.read(pad4(id.capturedPacketLength));
+    block.data.read(pad4(capturedPacketLength));
     pkt.options = await this.#readOptions(block);
     this.push(pkt);
   }

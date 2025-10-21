@@ -166,6 +166,7 @@ The following things have been added:
 - Added support for AbortSignals
 - Added support for multiple Section Header blocks in a stream, including
   changes of endian-ness.
+- Added support for Simple Packet blocks.
 
 [![Tests](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml/badge.svg)](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml)
 [![codecov](https://codecov.io/gh/cto-af/pcap-ng-parser/graph/badge.svg?token=Akjw67WYcn)](https://codecov.io/gh/cto-af/pcap-ng-parser)

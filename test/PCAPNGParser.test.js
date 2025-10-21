@@ -134,6 +134,45 @@ describe('PCAPNGParser', () => {
     }));
   });
 
+  describe('simple packet', () => {
+    it('errors if no interface', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001C
+00000003 00000014 00000003 01020300 00000014`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('error', er => {
+          try {
+            assert.match(er.message, /No interface for simple packet/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+
+    it('handles simple packets', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001C
+00000001 00000014 0001 0000 00000010 00000014
+00000003 00000014 00000003 01020300 00000014`)
+        .on('close', reject)
+        .on('error', reject)
+        .on('interface', i => {
+          assert.equal(i.snapLen, 16);
+        })
+        .on('data', p => {
+          try {
+            assert.equal(p.originalPacketLength, 3);
+            assert.deepEqual(p.data, Buffer.from('010203', 'hex'));
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+  });
+
   describe('edge cases', () => {
     it('detects bad blockTypes', () => new Promise((resolve, reject) => {
       parseHex('01010101 1C000000 4D3C2B1A 0001 0000 FFFFFFFFFFFFFFFF 1C000000')
