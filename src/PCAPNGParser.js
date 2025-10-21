@@ -416,6 +416,7 @@ export class PCAPNGParser extends Transform {
       options: await this.#readOptions(block),
     };
 
+    this.interfaces = []; // Reset interfaces in each section.
     this.emit('section', this.#sectionHeader);
   }
 
@@ -462,6 +463,10 @@ export class PCAPNGParser extends Transform {
         block.data,
         BlockConfig.enhancedPacketBlockFormat
       );
+
+    if (id.interfaceId >= this.interfaces.length) {
+      throw new Error(`Invalid interface ID: ${id.interfaceId} >= ${this.interfaces.length}`);
+    }
 
     /** @type {EnhancedPacketBlockFormat} */
     const pkt = {

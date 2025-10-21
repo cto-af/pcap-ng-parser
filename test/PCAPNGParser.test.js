@@ -179,6 +179,24 @@ describe('PCAPNGParser', () => {
         });
     }));
 
+    it('errors on bad interface ID in EPB', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF  0000001C
+00000006 00000020
+  00000000 0000000000000000 00000000 00000000
+00000020
+`)
+        .on('data', reject)
+        .on('error', er => {
+          try {
+            assert.match(er.message, /Invalid interface ID/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+
     it('handles bigendian', () => new Promise((resolve, reject) => {
       parseHex('0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF  0000001C')
         .on('data', reject)
