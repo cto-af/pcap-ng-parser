@@ -2,9 +2,15 @@ import {Buffer} from 'node:buffer';
 import PCAPNGParser from '../src/PCAPNGParser.js';
 import {assert} from 'chai';
 import fs from 'node:fs';
-import stream from 'node:stream';
 
 const pcapNgParser = new PCAPNGParser();
+
+function parseHex(hex, opts) {
+  const parser = new PCAPNGParser(opts);
+  const buf = Buffer.from(hex.replace(/\s/g, ''), 'hex');
+  parser.end(buf);
+  return parser;
+}
 
 describe('PCAPNGParser', () => {
   describe(".on('data')", () => {
@@ -83,53 +89,165 @@ describe('PCAPNGParser', () => {
     it('handles wireshark output', () => new Promise((resolve, reject) => {
       const parser = new PCAPNGParser();
       const bufferStream3 = fs.createReadStream('./test/buffer/buffer3');
+      let count = 0;
       bufferStream3
-        .pipe(parser, {end: true})
-        .addListener('data', _d => {
-          // Ignored, but needed to make close happen.
+        .pipe(parser)
+        .on('data', _d => {
+          // Needed to make close happen.
+          count++;
         })
-        .on('close', resolve)
+        .on('close', () => {
+          try {
+            assert.equal(count, 6);
+            resolve();
+          } catch (er) {
+            reject(er);
+          }
+        })
         .on('error', reject)
         .once('interface', i => {
-          assert.property(i, 'linkType', 'i has property linkType');
-          assert.property(i, 'snapLen', 'i has property snapLen');
-          // No name
+          try {
+            assert.property(i, 'linkType', 'i has property linkType');
+            assert.property(i, 'snapLen', 'i has property snapLen');
+          } catch (er) {
+            reject(er);
+          }
+        });
+    }));
+
+    it('handles PEN options', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 00000026 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF
+  0BAC 0007 00007ed9 61620000
+00000026`)
+        .on('data', reject)
+        .on('section', s => {
+          try {
+            assert.deepEqual(s.options, [
+              {optionType: 2988, name: 'opt_custom', pen: 32473, str: 'ab'},
+            ]);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
         });
     }));
   });
 
   describe('edge cases', () => {
     it('detects bad blockTypes', () => new Promise((resolve, reject) => {
-      const parser = new PCAPNGParser();
-      const bs = stream.Readable.from(Buffer.from('01010101', 'hex'));
-      parser.on('error', er => {
-        assert.match(er.message, /Invalid file, block type/);
-        resolve();
-      });
-      parser.on('close', reject);
-      bs.pipe(parser);
+      parseHex('01010101 1C000000 4D3C2B1A 0001 0000 FFFFFFFFFFFFFFFF 1C000000')
+        .on('data', reject)
+        .on('error', er => {
+          try {
+            assert.match(er.message, /Invalid first block/);
+            resolve();
+          } catch {
+            reject(er);
+          }
+        })
+        .on('close', reject);
+    }));
+
+    it('detects bad trailing blockLengths', () => new Promise((resolve, reject) => {
+      parseHex('0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001D')
+        .on('data', reject)
+        .on('error', er => {
+          try {
+            assert.match(er.message, /Length mismatch/);
+            resolve();
+          } catch {
+            reject(er);
+          }
+        })
+        .on('close', reject);
+    }));
+
+    it('handles unknown blockTypes', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF  0000001C
+01010102 00000010 01020304 00000010`)
+        .on('data', reject)
+        .on('error', reject)
+        .on('blockType', bt => {
+          try {
+            assert.equal(bt, 0x01010102);
+            resolve();
+          } catch (er) {
+            reject(er);
+          }
+        });
     }));
 
     it('handles bigendian', () => new Promise((resolve, reject) => {
-      const parser = new PCAPNGParser();
-      const bs = stream.Readable.from(Buffer.from('0A0D0D0A000000001A2B3C4D', 'hex'));
-      parser.on('error', er => {
-        assert.match(er.message, /The value of "offset" is out of range/);
-        resolve();
-      });
-      parser.on('close', reject);
-      bs.pipe(parser);
+      parseHex('0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF  0000001C')
+        .on('data', reject)
+        .on('error', reject)
+        .on('end', resolve);
     }));
 
     it('handles bad endianess', () => new Promise((resolve, reject) => {
+      parseHex('0A0D0D0A 10000000 1A2B3C4E 10000000')
+        .on('error', er => {
+          try {
+            assert.match(er.message, /Unable to determine endian from/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        })
+        .on('data', reject)
+        .on('close', reject);
+    }));
+
+    it('ends when there is no input', () => new Promise((resolve, reject) => {
       const parser = new PCAPNGParser();
-      const bs = stream.Readable.from(Buffer.from('0A0D0D0A000000001A2B3C4E', 'hex'));
+      parser.addListener('data', reject);
       parser.on('error', er => {
-        assert.match(er.message, /Unable to determine endian from/);
-        resolve();
+        try {
+          assert.match(er.message, /At least one Section Header required/);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
       });
       parser.on('close', reject);
-      bs.pipe(parser);
+      parser.end();
+    }));
+
+    it('ends when there is null input', () => new Promise((resolve, reject) => {
+      parseHex('')
+        .on('error', er => {
+          try {
+            assert.match(er.message, /At least one Section Header required/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        })
+        .on('data', reject)
+        .on('close', reject);
+    }));
+
+    it('rejects invalid writes', () => {
+      const parser = new PCAPNGParser();
+      assert.throws(() => parser.write(12), /argument must be of type string or an instance of Buffer/);
+    });
+
+    it('handles AbortSignals', () => new Promise((resolve, reject) => {
+      const ac = new AbortController();
+      parseHex('0A0D', {signal: ac.signal})
+        .on('error', er => {
+          try {
+            assert.match(er.message, /aborted/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        })
+        .on('data', reject)
+        .on('close', reject);
+      ac.abort();
     }));
 
     it('has typesafe events', () => {

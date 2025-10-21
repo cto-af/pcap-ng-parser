@@ -2,6 +2,7 @@
  * @typedef {object} BlockProperty
  * @property {number} size Bytes.
  * @property {boolean} [signed] If true, read signed.
+ * @property {boolean} [big] If true, read a bigint.
  */
 
 /**
@@ -9,16 +10,9 @@
  */
 
 /**
- * @type {BlockDescriptor}
  * @see documentation at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-section-header-block
  */
 export const sectionHeaderBlock = {
-  blockType: {
-    size: 4,
-  },
-  blockTotalLength: {
-    size: 4,
-  },
   byteOrderMagic: {
     size: 4,
   },
@@ -28,41 +22,33 @@ export const sectionHeaderBlock = {
   minorVersion: {
     size: 2,
   },
-
-  // This is a signed 64 bit value... but node doesn't do 64 bit values
-  sectionLengthTop: {
-    size: 4,
-  },
-  sectionLengthBottom: {
-    size: 4,
+  sectionLength: {
+    size: 8,
+    signed: true,
+    big: true,
   },
 };
 
 /**
- * @type {BlockDescriptor}
  * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block
  */
-export const blockConfig = {
+export const blockType = {
   blockType: {
     size: 4,
     signed: true,
   },
+};
+
+export const blockTotalLength = {
   blockTotalLength: {
     size: 4,
   },
 };
 
 /**
- * @type {BlockDescriptor}
  * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-interface-description-block
  */
 export const interfaceDescriptionBlockFormat = {
-  blockType: {
-    size: 4,
-  },
-  blockTotalLength: {
-    size: 4,
-  },
   linkType: {
     size: 2,
   },
@@ -75,16 +61,9 @@ export const interfaceDescriptionBlockFormat = {
 };
 
 /**
- * @type {BlockDescriptor}
  * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block
  */
 export const enhancedPacketBlockFormat = {
-  blockType: {
-    size: 4,
-  },
-  blockTotalLength: {
-    size: 4,
-  },
   interfaceId: {
     size: 4,
   },
@@ -106,14 +85,25 @@ export const enhancedPacketBlockFormat = {
 };
 
 /**
- * @type {BlockDescriptor}
  * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-options
  */
 export const optionBlock = {
-  code: {
+  optionType: {
     size: 2,
   },
   dataLength: {
     size: 2,
+  },
+};
+
+export const endLength = {
+  endTotalLength: {
+    size: 4,
+  },
+};
+
+export const privateEnterpriseNumber = {
+  pen: {
+    size: 4,
   },
 };

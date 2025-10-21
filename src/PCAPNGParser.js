@@ -1,43 +1,18 @@
 import * as BlockConfig from './BlockConfig.js';
-import {Buffer} from 'node:buffer';
+import {
+  ENHANCED_PACKET, INTERFACE_DESCRIPTION, OPTION_NAMES, SECTION_HEADER,
+} from './options.js';
+import {NoFilter} from 'nofilter';
 import {Transform} from 'node:stream';
 
 /** @import {Readable, TransformCallback} from 'node:stream' */
 
 /**
- * @param {number} blockType
- * @throws {Error} On invalid block type.
+ * @param {number} n
+ * @returns {number}
  */
-function checkBlockTypeFromBuffer(blockType) {
-  if (blockType !== 0x0A0D0D0A) {
-    throw new Error(`Invalid file, block type of ${blockType.toString(16)} not recognized`);
-  }
-}
-
-/**
- * Read a block.
- *
- * @param {Buffer} buf
- * @param {BlockDescriptor} blockDescriptor
- * @param {Endianess} [endian]
- * @param {number} [offset]
- * @returns {Block}
- */
-function readBlock(buf, blockDescriptor, endian = 'LE', offset = 0) {
-  let pos = offset;
-
-  /** @type {Record<string, number>} */
-  const props = {};
-  for (const [prop, {size, signed}] of Object.entries(blockDescriptor)) {
-    const readMethod = `read${signed ? '' : 'U'}Int${size * 8}${endian}`;
-    // @ts-expect-error readMethod hides type
-    props[prop] = buf[readMethod](pos);
-    pos += size;
-  }
-  return {
-    newOffset: pos,
-    data: props,
-  };
+function pad4(n) {
+  return Math.ceil(n / 4) * 4;
 }
 
 /**
@@ -56,9 +31,10 @@ function processByteOrderMagic(byteOrderMagic) {
 
 /**
  * @typedef {object} Interface
- * @property {number | undefined} [linkType] See https://datatracker.ietf.org/doc/html/draft-ietf-opsawg-pcaplinktype for info.
- * @property {number | undefined} [snapLen] Capture length.
+ * @property {number | undefined} linkType See https://datatracker.ietf.org/doc/html/draft-ietf-opsawg-pcaplinktype for info.
+ * @property {number | undefined} snapLen Capture length.
  * @property {string} [name] Interface name.
+ * @property {Option[]} options All interface options.
  */
 
 /**
@@ -70,20 +46,59 @@ function processByteOrderMagic(byteOrderMagic) {
  */
 
 /**
+ * @typedef {object} EnhancedPacketBlockFormat
+ * @property {number} [blockType]
+ * @property {number} [blockTotalLength]
+ * @property {number} interfaceId
+ * @property {number} timestampHigh
+ * @property {number} timestampLow
+ * @property {number} [capturedPacketLength]
+ * @property {number} [originalPacketLength]
+ * @property {Buffer} data
+ * @property {Option[]} options
+ */
+
+/**
+ * @typedef {object} BlockConfig
+ * @property {number} blockType
+ * @property {number} blockTotalLength
+ */
+
+/**
+ * @typedef {object} Data
+ * @property {NoFilter} data
+ */
+
+/**
+ * @typedef {BlockConfig & Data} Block
+ */
+
+/**
+ * @typedef {object} EndLength
+ * @property {number} endLength
+ */
+
+/**
  * @typedef {object} ParseEvents
  * @property {[number]} blockType
  * @property {[]} close
  * @property {[Packet]} data
  * @property {[]} drain
  * @property {[]} end
- * @property {[Error]} error
+ * @property {[unknown]} error
  * @property {[]} finish
  * @property {[Interface]} interface
  * @property {[]} pause
  * @property {[Readable]} pipe
+ * @property {[SectionHeader]} section
  * @property {[]} readable
  * @property {[]} resume
  * @property {[Readable]} unpipe
+ */
+
+/**
+ * @typedef {object} ParserOptions
+ * @property {AbortSignal} [signal]
  */
 
 export class PCAPNGParser extends Transform {
@@ -95,36 +110,33 @@ export class PCAPNGParser extends Transform {
   /** @typedef {"BE" | "LE"} Endianess */
 
   /**
-   * @typedef {object} Data
+   * @typedef {Record<string, number>} Numbers
+   */
+
+  /**
+   * @typedef {object} GenericOption
+   * @property {number} optionType
+   * @property {number} [dataLength]
    * @property {Buffer} [data]
+   * @property {string} [str]
+   * @property {string} [name]
+   * @property {boolean} [private]
    */
 
   /**
-   * @typedef {Data & Record<string, number>} BlockData
+   * @typedef {object} PrivateEnterpriseNumber
+   * @property {number} [pen]
    */
 
-  /**
-   * @typedef {object} Block
-   * @property {number} newOffset
-   * @property {BlockData} data
-   */
-
-  /**
-   * @typedef {object} Option
-   * @property {number} code
-   * @property {number} dataLength
-   * @property {Buffer} data
-   */
+  /** @typedef {GenericOption & PrivateEnterpriseNumber} Option */
 
   /**
    * @typedef {object} SectionHeader
-   * @property {number} blockType
-   * @property {number} blockTotalLength
-   * @property {number} byteOrderMagic
+   * @property {Endianess} endianess
    * @property {number} majorVersion
    * @property {number} minorVersion
-   * @property {number} sectionLengthTop
-   * @property {number} sectionLengthBottom
+   * @property {number} sectionLength
+   * @property {Option[]} [options]
    */
 
   /** @type {Endianess} */
@@ -133,93 +145,113 @@ export class PCAPNGParser extends Transform {
   /** @type {SectionHeader | undefined} */
   #sectionHeader = undefined;
 
-  /** @type {Buffer | undefined} */
-  #carryData = undefined;
+  /** @type {NoFilter | undefined} */
+  #nof = undefined;
 
-  constructor() {
+  /** @type {Promise<void> | undefined} */
+  #reading = undefined;
+
+  /** @type {AbortSignal | undefined} */
+  #signal = undefined;
+
+  /**
+   * @param {ParserOptions} opts
+   */
+  constructor(opts = {}) {
+    const {signal} = opts;
+
     // The magic bit to allow objects
     super({
       readableObjectMode: true,
+      signal,
     });
+    this.#signal = signal;
   }
 
   /**
    * Transform chunks of data into packets and interface events.
+   * DO NOT call directly.
    *
    * @param {Buffer} chunk Data to process.
    * @param {string} _encoding Ignored.
    * @param {TransformCallback} callback Called when finished with chunk.
    */
   _transform(chunk, _encoding, callback) {
-    let buf = chunk;
-    // Stitch previous data packet fragment
-    if (this.#carryData) {
-      buf = Buffer.concat([this.#carryData, chunk]);
-      this.#carryData = undefined;
+    if (!this.#nof) {
+      this.#nof = new NoFilter({
+        signal: this.#signal,
+        objectMode: false,
+        watchPipe: false,
+      });
+      this.#reading = this.#readFile(this.#nof);
     }
+    this.#nof.write(chunk, callback);
+  }
 
-    let pos = 0;
-    while (pos < (buf.length)) {
-      if (!this.#sectionHeader) {
-        try {
-          pos = this.#readHeaderBlockFromBuffer(buf);
-        } catch (err) {
-          callback(/** @type {Error} */(err));
-          return;
+  /**
+   * Finished writing.
+   * DO NOT call directly.
+   *
+   * @param {TransformCallback} cb
+   */
+  _flush(cb) {
+    this.#nof?.end();
+    if (this.#reading) {
+      this.#reading.then(() => cb(), cb);
+    } else {
+      // Never started writing data.
+      cb(new Error('At least one Section Header required'));
+    }
+  }
+
+  /**
+   * @param {number} blockType
+   * @throws {Error} Invalid first block.
+   */
+  #checkStart(blockType) {
+    if (!this.#sectionHeader) {
+      if (blockType === -1) {
+        throw new Error('At least one Section Header required');
+      }
+      throw new Error(`Invalid first block 0x${blockType.toString(16)}, must be 0x${SECTION_HEADER.toString(16)}`);
+    }
+  }
+
+  /**
+   * Read the whole file, once data has started to flow.
+   *
+   * @param {NoFilter} nof
+   */
+  async #readFile(nof) {
+    try {
+      while (true) {
+        const block = await this.#readBlock(nof);
+        if (!block) {
+          break;
         }
-      } else if (pos + 8 >= buf.length) {
-        // If we don't have enough to read the next block length save the
-        // remaining data to be pre-pended to the next received data
-        this.#carryData = buf.subarray(pos);
-        pos = buf.length;
-      } else {
-        // Read block type and length
-        const block = readBlock(
-          buf,
-          BlockConfig.blockConfig,
-          this.#endianess,
-          pos
-        );
-
-        // @ts-expect-error
-        if (pos + block.data.blockTotalLength > buf.length) {
-          // This block is bigger than the data we have so save it to be
-          // pre-pended to the next received data
-          this.#carryData = buf.subarray(pos);
-          pos = buf.length;
-        } else {
-          // We have the entire block, go ahead and process itj
-          const blockData = buf.subarray(
-            pos,
-            // @ts-expect-error
-            pos + block.data.blockTotalLength
-          );
-          const outputDataBlock = this.#processRawBlock(
-            blockData,
-            // @ts-expect-error
-            block.data.blockType
-          );
-          if (outputDataBlock) {
-            const sendBlock = {...outputDataBlock};
-            delete sendBlock.blockType;
-            delete sendBlock.blockTotalLength;
-            delete sendBlock.capturedPacketLength;
-            delete sendBlock.originalPacketLength;
-            this.push(sendBlock);
-          }
-          // @ts-expect-error
-          pos += block.data.blockTotalLength;
-
-          // @ts-expect-error
-          if (block.data.blockTotalLength <= 0) {
-            callback(new Error('Invalid block with size 0, unable to scan stream'));
-            return;
-          }
+        switch (block.blockType) {
+          case INTERFACE_DESCRIPTION:
+            this.#checkStart(block.blockType);
+            await this.#processInterface(block);
+            break;
+          case ENHANCED_PACKET:
+            this.#checkStart(block.blockType);
+            await this.#processEnhancedPacket(block);
+            break;
+          case SECTION_HEADER:
+            await this.#processSectionHeader(block);
+            break;
+          default:
+            this.#checkStart(block.blockType);
+            if (block.blockType >= 0) {
+              this.emit('blockType', block.blockType);
+            }
         }
       }
-    } // End while pos
-
-    callback();
+      this.#checkStart(-1);
+    } catch (er) {
+      this.emit('error', er);
+    }
   }
 
   // The following overrides of EventEmitter are here to make event code type
@@ -302,115 +334,208 @@ export class PCAPNGParser extends Transform {
   }
 
   /**
-   * @param {Buffer} buf
-   * @returns
+   * Read a block.
+   *
+   * @param {NoFilter} nof
+   * @returns {Promise<Block | undefined>}
    */
-  #readHeaderBlockFromBuffer(buf) {
-    // Read the header block to determine endianess and make sure its a
-    // PCAP-NG file
-    const blockType = buf.readUInt32BE(0);
-    checkBlockTypeFromBuffer(blockType);
+  async #readBlock(nof) {
+    let bt = undefined;
+    try {
+      const {blockType} = await this.#readNumbers(
+        nof, BlockConfig.blockType
+      );
+      bt = blockType;
+    } catch (er) {
+      if ((er instanceof Error) &&
+          (er.message === 'Stream finished before 4 bytes were available')) {
+        // Done.  OK to be done at the start of a block.
+        return undefined;
+      }
+      throw er;
+    }
 
-    const byteOrderMagic = buf.readUInt32BE(8);
-    this.#endianess = processByteOrderMagic(byteOrderMagic);
+    if (bt === SECTION_HEADER) {
+      // Peek at the byte order first.
+      await nof.waitFor(8);
+      const bom = /** @type {Buffer} */(nof.slice(4, 8)).readUint32BE(0);
+      this.#endianess = processByteOrderMagic(bom);
+    }
 
-    const res = readBlock(
-      buf,
-      BlockConfig.sectionHeaderBlock,
-      this.#endianess,
-      0
+    const {blockTotalLength} = await this.#readNumbers(
+      nof, BlockConfig.blockTotalLength
     );
-    // @ts-expect-error
-    this.#sectionHeader = res.data;
 
-    // @ts-expect-error
-    return this.#sectionHeader.blockTotalLength;
+    const dataLen = blockTotalLength - 12;
+    const block = {
+      blockType: bt,
+      blockTotalLength,
+      data: new NoFilter(await nof.readFull(dataLen)),
+    };
+    // Padding
+    await nof.readFull(pad4(dataLen) - dataLen);
+
+    const {endTotalLength} = await this.#readNumbers(
+      nof, BlockConfig.endLength
+    );
+    if (endTotalLength !== blockTotalLength) {
+      throw new Error(`Length mismatch, ${endTotalLength} != ${blockTotalLength}`);
+    }
+    return block;
   }
 
   /**
-   * @param {Buffer} buf
-   * @returns {Option[]}
+   * @param {Block} block
    */
-  #readOptions(buf) {
-    let pos = 0;
+  async #processSectionHeader(block) {
+    // Byte order magic handled in #readBlock proactively
+    const hdr = await this.#readNumbers(
+      block.data,
+      BlockConfig.sectionHeaderBlock
+    );
+
+    this.#sectionHeader = {
+      ...hdr,
+      endianess: this.#endianess,
+      options: await this.#readOptions(block),
+    };
+
+    this.emit('section', this.#sectionHeader);
+  }
+
+  /**
+   * @param {Block} block
+   * @returns {Promise<Option[]>}
+   */
+  async #readOptions(block) {
     let foundEndOption = false;
 
     /** @type {Option[]} */
     const options = [];
-    while (pos < buf.length || foundEndOption) {
-      const rb = readBlock(buf, BlockConfig.optionBlock, this.#endianess, pos);
-      // @ts-expect-error
-      pos = rb.newOffset + (rb.data.dataLength * 8);
-      if (rb.data.code === 0) {
+    while (block.data.length && !foundEndOption) {
+      const rb = await this.#readNumbers(
+        block.data, BlockConfig.optionBlock
+      );
+      if (rb.optionType === 0) {
         foundEndOption = true;
       } else {
-        // @ts-expect-error
-        rb.data.data = buf.subarray(pos - (rb.data.dataLength * 8), pos);
-        // @ts-expect-error
-        options.push(rb.data);
+        /** @type {PrivateEnterpriseNumber | undefined} */
+        let pen = undefined;
+        let name = undefined;
+        let str = false;
+
+        const desc = OPTION_NAMES.get(block.blockType)?.get(rb.optionType);
+        if (desc) {
+          name = {name: desc[0]};
+          str = Boolean(desc[1]);
+          if (desc[2]) {
+            pen = await this.#readNumbers(
+              block.data, BlockConfig.privateEnterpriseNumber
+            );
+          }
+        }
+
+        /** @type {Option} */
+        const opt = {
+          ...rb,
+          ...name,
+          ...pen,
+          data: /** @type {Buffer} */ (block.data.read(rb.dataLength)),
+        };
+
+        if (rb.optionType & 0x8000) {
+          opt.private = true;
+        }
+        if (str) {
+          opt.str = /** @type {Buffer} */(opt.data).toString('utf-8')
+            .replaceAll('\0', '')
+            .trim();
+          delete opt.data;
+        }
+        delete opt.dataLength;
+
+        // Skip padding
+        block.data.read(pad4(rb.dataLength) - rb.dataLength);
+        options.push(opt);
       }
     }
     return options;
   }
 
   /**
-   * @param {Buffer} blockData
-   * @param {number} blockType
-   * @returns {BlockData | undefined}
-   * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-general-block-structure
+   * Interface Description Block.
+   *
+   * @param {Block} block
+   * @returns {Promise<void>}
+   * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-interface-description-block
    */
-  #processRawBlock(blockData, blockType) {
-    if (blockType < 0) {
-      // MSB of 1 indicates this is 'local use' data
-    } else if (blockType === 1) {
-      // Interface definition
-
-      /** @type {Interface} */
-      const iData = {};
-      const idRes = readBlock(
-        blockData,
-        BlockConfig.interfaceDescriptionBlockFormat,
-        this.#endianess,
-        0
-      );
-      iData.linkType = idRes.data.linkType;
-      iData.snapLen = idRes.data.snapLen;
-      if (idRes.newOffset < blockData.length) {
-        const opts = this.#readOptions(blockData.subarray(idRes.newOffset));
-        opts.forEach(opt => {
-          if (opt.code === 2) {
-            iData.name = opt.data.toString('utf8')
-              .replace(/\0/g, '')
-              .trim();
-          } else {
-            // @ts-expect-error
-            iData[`code_${opt.code}`] = opt.data.toString();
-          }
-        });
+  async #processInterface(block) {
+    // Interface definition
+    /** @type {Interface} */
+    const iData = {};
+    const idRes = await this.#readNumbers(
+      block.data,
+      BlockConfig.interfaceDescriptionBlockFormat
+    );
+    iData.linkType = idRes.linkType;
+    iData.snapLen = idRes.snapLen;
+    iData.options = await this.#readOptions(block);
+    iData.options.forEach(opt => {
+      if (opt.optionType === 2) {
+        iData.name = /** @type {string} */ (opt.str);
       }
-      this.interfaces.push(iData);
+    });
 
-      // Notify listeners we got a new interface
-      this.emit('interface', iData);
-    } else if (blockType === 6) {
-      // Enhanced block... data
-      const id = readBlock(
-        blockData,
-        BlockConfig.enhancedPacketBlockFormat,
-        this.#endianess,
-        0
+    this.interfaces.push(iData);
+
+    // Notify listeners we got a new interface
+    this.emit('interface', iData);
+  }
+
+  /**
+   * Enhanced Packet Block.
+   *
+   * @param {Block} block
+   * @returns {Promise<void>}
+   * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block
+   */
+  async #processEnhancedPacket(block) {
+    const id =
+      await this.#readNumbers(
+        block.data,
+        BlockConfig.enhancedPacketBlockFormat
       );
 
-      id.data.data = blockData.subarray(
-        id.newOffset,
-        // @ts-expect-error
-        id.newOffset + id.data.capturedPacketLength
-      );
-      return id.data;
-    } else {
-      this.emit('blockType', blockType);
+    /** @type {EnhancedPacketBlockFormat} */
+    const pkt = {
+      ...id,
+      data: /** @type {Buffer} */(block.data.read(id.capturedPacketLength)),
+      options: [],
+    };
+
+    block.data.read(pad4(id.capturedPacketLength) - id.capturedPacketLength);
+    pkt.options = await this.#readOptions(block);
+    this.push(pkt);
+  }
+
+  /**
+   * Read a set of numbers from the given input.
+   *
+   * @template {BlockDescriptor} T
+   * @param {NoFilter} nof
+   * @param {T} blockDescriptor
+   * @returns {Promise<Record<keyof T, number>>}
+   */
+  async #readNumbers(nof, blockDescriptor) {
+    /** @type {Partial<Record<keyof T, number>>} */
+    const props = {};
+    for (const [prop, {size, signed, big}] of Object.entries(blockDescriptor)) {
+      const buf = await nof.readFull(size);
+      const readMethod = `read${big ? 'Big' : ''}${signed ? '' : 'U'}Int${size * 8}${this.#endianess}`;
+      // @ts-expect-error readMethod hides type
+      props[prop] = buf[readMethod](0);
     }
-    return undefined;
+    return /** @type {Record<keyof T, number>} */(props);
   }
 }
 

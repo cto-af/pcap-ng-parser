@@ -43,19 +43,22 @@
   "license": "BSD-3",
   "devDependencies": {
     "@cto.af/eslint-config": "6.0.15",
-    "@eslint/markdown": "7.4.0",
-    "@types/node": "24.8.1",
+    "@eslint/markdown": "7.4.1",
+    "@types/node": "24.9.1",
     "c8": "10.1.3",
     "chai": "^6.2.0",
     "eslint": "9.38.0",
-    "eslint-plugin-jsdoc": "61.1.4",
+    "eslint-plugin-jsdoc": "61.1.5",
     "eslint-plugin-mocha": "11.2.0",
     "ether-frame": "^0.2.0",
     "mocha": "^11.7.4",
     "typescript": "5.9.3"
   },
-  "packageManager": "pnpm@10.18.3",
+  "packageManager": "pnpm@10.19.0",
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "nofilter": "6.2.1"
   }
 }

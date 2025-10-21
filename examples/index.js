@@ -10,9 +10,12 @@ import PCAPNGParser from '../src/PCAPNGParser.js';
 import fs from 'node:fs';
 
 const pcapNgParser = new PCAPNGParser();
+
+const filename = process.argv[2] ?? new URL('./res/myfile.pcapng', import.meta.url);
+
 // To pipe from tcpdump:
 // const myFileStream = process.stdin
-const myFileStream = fs.createReadStream('./examples/res/myfile.pcapng');
+const myFileStream = fs.createReadStream(filename);
 
 myFileStream
   .pipe(pcapNgParser)
@@ -24,10 +27,19 @@ myFileStream
       );
     } catch (ex) {
       // Catches for type codes not currently supported by ether-frame
-      console.log(ex.message);
+      console.log('ETHERFRAME ERROR', ex.message);
     }
   })
+  .on('section', sectionHeader => {
+    console.log('SECTION', sectionHeader);
+  })
   .on('interface', interfaceInfo => {
-    console.log(interfaceInfo);
+    console.log('INTERFACE', interfaceInfo);
+  })
+  .on('blockType', t => {
+    console.log(`Unimplemented block type: ${t}`);
+  })
+  .on('error', er => {
+    console.log('ERROR', er);
   });
 

@@ -160,6 +160,12 @@ The following things have been added:
 - Renamed 'master' branch to 'main'
 - Added Github Actions for testing and publishing
 - Fixed broken links in readme and code
+- Fixed issues with padding for options
+- Now reads all options for supported block types, giving them names when known
+- Fixed issues with reading unexpected sizes in input stream
+- Added support for AbortSignals
+- Added support for multiple Section Header blocks in a stream, including
+  changes of endian-ness.
 
 [![Tests](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml/badge.svg)](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml)
 [![codecov](https://codecov.io/gh/cto-af/pcap-ng-parser/graph/badge.svg?token=Akjw67WYcn)](https://codecov.io/gh/cto-af/pcap-ng-parser)
