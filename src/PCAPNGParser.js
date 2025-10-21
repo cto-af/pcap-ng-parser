@@ -451,6 +451,7 @@ export class PCAPNGParser extends Transform {
    *
    * @param {Block} block
    * @returns {Promise<void>}
+   * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-simple-packet-block
    */
   async #processSimplePacket(block) {
     if (!this.interfaces.length) {
