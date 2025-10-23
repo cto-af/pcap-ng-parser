@@ -1,4 +1,6 @@
 import {
+  CUSTOM_COPY,
+  CUSTOM_NOCOPY,
   DECRYPTION_SECRETS,
   INTERFACE_DESCRIPTION,
   INTERFACE_STATISTICS,
@@ -431,6 +433,48 @@ ${hexBlock(DECRYPTION_SECRETS, `
               secretsType: 0x5353484b,
               data: Buffer.from('ab\0'),
               options: [],
+            });
+            resolve();
+          } catch (er) {
+            reject(er);
+          }
+        });
+    }));
+  });
+
+  describe('custom blocks', () => {
+    it('handles copyable custom blocks', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(CUSTOM_COPY, '00007ed9 00000000')}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('custom', custom => {
+          try {
+            assert.deepEqual(custom, {
+              pen: 32473,
+              data: Buffer.from('00000000', 'hex'),
+              copy: true,
+            });
+            resolve();
+          } catch (er) {
+            reject(er);
+          }
+        });
+    }));
+
+    it('handles non-copyable custom blocks', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(CUSTOM_NOCOPY, '00007ed9 00000000')}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('custom', custom => {
+          try {
+            assert.deepEqual(custom, {
+              pen: 32473,
+              data: Buffer.from('00000000', 'hex'),
+              copy: false,
             });
             resolve();
           } catch (er) {
