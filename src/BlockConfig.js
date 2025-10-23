@@ -66,6 +66,15 @@ export const simplePacketFormat = {
   },
 };
 
+export const nameResolutionFormat = {
+  recordType: {
+    size: 2,
+  },
+  recordValueLength: {
+    size: 2,
+  },
+};
+
 /**
  * @see definition at https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block
  */

@@ -1,6 +1,7 @@
 export const SECTION_HEADER = 0x0A0D0D0A;
 export const INTERFACE_DESCRIPTION = 0x1;
 export const SIMPLE_PACKET = 0x3;
+export const NAME_RESOLUTION = 0x4;
 export const ENHANCED_PACKET = 0x6;
 
 /**
@@ -42,6 +43,16 @@ export const OPTION_NAMES = new Map([
     [16, ['if_txspeed']],
     [17, ['if_rxspeed']],
     [18, ['if_iana_tzname', true]],
+    [2988, ['opt_custom', true, true]],
+    [2989, ['opt_custom', false, true]],
+    [19372, ['opt_custom', true, true]],
+    [19373, ['opt_custom', false, true]],
+  ])],
+  [NAME_RESOLUTION, new Map([
+    [1, ['opt_comment', true]],
+    [2, ['ns_dnsname', true]],
+    [3, ['ns_dnsIP4addr']],
+    [4, ['ns_dnsIP6addr']],
     [2988, ['opt_custom', true, true]],
     [2989, ['opt_custom', false, true]],
     [19372, ['opt_custom', true, true]],

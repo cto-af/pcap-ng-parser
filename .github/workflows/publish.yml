@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v5
@@ -19,7 +19,11 @@ jobs:
           cache: pnpm
       - run: pnpm i -r
       - run: npm run build
+      - name: Deploy Docs
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs
+          publish_branch: gh-pages
       - run: npm pkg delete pnpm devDependencies scripts
       - run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
