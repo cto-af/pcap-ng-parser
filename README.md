@@ -73,6 +73,8 @@ PCAPNGParser class fires the following events:
 - `section`: A Section Header block was parsed.
 - `interface`: An Interface block was parsed.
 - `names`: A Name Resolution block was parsed.
+- `secrets`: A Decryption Secrets block was parsed.
+- `stats`: An Interface Statistics block was parsed.
 - `blockType`: An unknown block type has been received.
 
 See the full API documentation for the types of the event parameters.
@@ -114,6 +116,8 @@ The following things have been added:
   changes of endian-ness.
 - Added support for Simple Packet blocks.
 - Added support for Name Resolution blocks.
+- Added support for Interface Statistics blocks.
+- Added initial Support for Decryption Secrets blocks.
 
 [![Tests](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml/badge.svg)](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml)
 [![codecov](https://codecov.io/gh/cto-af/pcap-ng-parser/graph/badge.svg?token=Akjw67WYcn)](https://codecov.io/gh/cto-af/pcap-ng-parser)
