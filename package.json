@@ -21,14 +21,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/CollinearGroup/pcap-ng-parser.git"
+    "url": "https://github.com/cto-af/pcap-ng-parser.git"
   },
   "keywords": [
     "pcap-ng",
     "tcpdump",
     "parser",
     "network",
-    "packets"
+    "packets",
+    "decode",
+    "draft-ietf-opsawg-pcapng"
   ],
   "author": "Collinear Group <support@collineargroup.com>",
   "contributors": [

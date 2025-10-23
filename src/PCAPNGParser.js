@@ -17,6 +17,43 @@ import {decode as ipDecode} from '@leichtgewicht/ip-codec';
 
 /** @import {Readable, TransformCallback} from 'node:stream' */
 
+const EPB_FLAGS_DIRECTIONS = /** @type {const} */([
+  'notAvailable',
+  'inbound',
+  'outbound',
+  'invalid',
+]);
+
+const EPB_FLAGS_RECEPTION = /** @type {const} */([
+  'notSpecified',
+  'unicast',
+  'multicast',
+  'broadcast',
+  'promiscuous',
+  'invalid',
+  'invalid',
+  'invalid',
+]);
+
+const EPB_FLAGS_LINK_LAYER_ERRORS = /** @type {const} */([
+  'symbol',
+  'preamble',
+  'startFrameDelimiter',
+  'unalignedFrame',
+  'wrongInterFrameGap',
+  'packetTooShort',
+  'packetTooLong',
+  'CRC',
+  'invalid',
+  'invalid',
+  'invalid',
+  'invalid',
+  'invalid',
+  'invalid',
+  'invalid',
+  'invalid',
+]);
+
 // #region Utility methods
 
 /**
@@ -104,10 +141,22 @@ function colons(buf) {
  */
 
 /**
+ * @typedef {object} PacketFlags
+ * @property {typeof EPB_FLAGS_DIRECTIONS[number]} direction
+ * @property {typeof EPB_FLAGS_RECEPTION[number]} reception
+ * @property {number} FCSlen
+ * @property {boolean} noChecksum
+ * @property {boolean} checksumValid
+ * @property {boolean} TCPsegmentationOfflad
+ * @property {typeof EPB_FLAGS_LINK_LAYER_ERRORS[number][]} linkLayerErrors
+ */
+
+/**
  * @typedef {object} Packet
  * @property {number} interfaceId
  * @property {number} [timestampHigh]
  * @property {number} [timestampLow]
+ * @property {PacketFlags} [flags]
  * @property {number} originalPacketLength
  * @property {Buffer} data
  * @property {Option[]} options
@@ -694,6 +743,29 @@ export class PCAPNGParser extends Transform {
 
     block.data.read(pad4(capturedPacketLength));
     pkt.options = await this.#readOptions(block);
+    for (const o of pkt.options) {
+      if (o.optionType === 2) { // Type epb_flags
+        let {flags} = await this.#readNumbers(
+          new NoFilter(o.data), BlockConfig.epbFlagsFormat
+        );
+        pkt.flags = {
+          direction: EPB_FLAGS_DIRECTIONS[flags & 0x3],
+          reception: EPB_FLAGS_RECEPTION[(flags >> 2) & 0x7],
+          FCSlen: (flags >> 5) & 0xF,
+          noChecksum: Boolean((flags >> 9) & 0x1),
+          checksumValid: Boolean((flags >> 10) & 0x1),
+          TCPsegmentationOfflad: Boolean((flags >> 11) & 0x1),
+          linkLayerErrors: [],
+        };
+        flags >>= 16;
+        for (let i = 0; i < 8; i++) {
+          if (flags & 0x1) {
+            pkt.flags.linkLayerErrors.push(EPB_FLAGS_LINK_LAYER_ERRORS[i]);
+          }
+          flags >>= 1;
+        }
+      }
+    }
     this.push(pkt);
   }
 
