@@ -2,6 +2,7 @@ import * as BlockConfig from './BlockConfig.js';
 import {
   ENHANCED_PACKET,
   INTERFACE_DESCRIPTION,
+  INTERFACE_STATISTICS,
   NAME_RESOLUTION,
   OPTION_NAMES,
   SECTION_HEADER,
@@ -110,6 +111,14 @@ function colons(buf) {
  */
 
 /**
+ * @typedef {object} InterfaceStatistics
+ * @property {number} interfaceId
+ * @property {number} timestampHigh
+ * @property {number} timestampLow
+ * @property {Option[]} options
+ */
+
+/**
  * @typedef {object} BlockConfig
  * @property {number} blockType
  * @property {number} blockTotalLength
@@ -122,11 +131,6 @@ function colons(buf) {
 
 /**
  * @typedef {BlockConfig & Data} Block
- */
-
-/**
- * @typedef {object} EndLength
- * @property {number} endLength
  */
 
 /**
@@ -176,6 +180,7 @@ function colons(buf) {
  *   before other parse events in a valid file.
  * @property {[]} readable Data is available to be read from the stream.
  * @property {[]} resume `stream.resume()` was called.
+ * @property {[InterfaceStatistics]} stats Interface Statistics block was read.
  * @property {[Readable]} unpipe `stream.unpipe()` was called.
  */
 
@@ -294,6 +299,9 @@ export class PCAPNGParser extends Transform {
             break;
           case NAME_RESOLUTION:
             await this.#processNameResolution(block);
+            break;
+          case INTERFACE_STATISTICS:
+            await this.#processInterfaceStatistics(block);
             break;
           case ENHANCED_PACKET:
             await this.#processEnhancedPacket(block);
@@ -607,6 +615,30 @@ export class PCAPNGParser extends Transform {
       }
     }
     this.emit('names', res);
+  }
+
+  /**
+   * Interface Statistics block.
+   *
+   * @param {Block} block
+   * @returns {Promise<void>}
+   * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-interface-statistics-block
+   */
+  async #processInterfaceStatistics(block) {
+    const {interfaceId, timestampHigh, timestampLow} = await this.#readNumbers(
+      block.data,
+      BlockConfig.interfaceStatisticsFormat
+    );
+    if (interfaceId >= this.interfaces.length) {
+      throw new Error(`Invalid interface id: ${interfaceId}`);
+    }
+    const stats = {
+      interfaceId,
+      timestampHigh,
+      timestampLow,
+      options: await this.#readOptions(block),
+    };
+    this.emit('stats', stats);
   }
 
   /**

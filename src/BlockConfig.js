@@ -122,3 +122,15 @@ export const privateEnterpriseNumber = {
     size: 4,
   },
 };
+
+export const interfaceStatisticsFormat = {
+  interfaceId: {
+    size: 4,
+  },
+  timestampHigh: {
+    size: 4,
+  },
+  timestampLow: {
+    size: 4,
+  },
+};

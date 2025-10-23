@@ -1,4 +1,9 @@
-import {NAME_RESOLUTION, SECTION_HEADER} from '../src/options.js';
+import {
+  INTERFACE_DESCRIPTION,
+  INTERFACE_STATISTICS,
+  NAME_RESOLUTION,
+  SECTION_HEADER,
+} from '../src/options.js';
 import {Buffer} from 'node:buffer';
 import {NoFilter} from 'nofilter';
 import PCAPNGParser from '../src/PCAPNGParser.js';
@@ -316,6 +321,91 @@ ${hexBlock(NAME_RESOLUTION, '0004 0008 0102030405060708')}`)
         .on('error', er => {
           try {
             assert.match(er, /Invalid nrb_record_eui64 record/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+  });
+
+  describe('interface statistics', () => {
+    it('handles Interface Statistic blocks', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_DESCRIPTION, '0001 0000 0000FFFF')}
+${hexBlock(INTERFACE_STATISTICS, `
+00000000 11111111 22222222
+  0002 0008 0000000000000002
+  0003 0008 0000000000000003
+  0004 0008 0000000000000004
+  0005 0008 0000000000000005
+  0006 0008 0000000000000006
+  0007 0008 0000000000000007
+  0008 0008 0000000000000008
+`)}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('stats', stats => {
+          try {
+            assert.deepEqual(stats, {
+              interfaceId: 0,
+              timestampHigh: 286331153,
+              timestampLow: 572662306,
+              options: [
+                {
+                  optionType: 2,
+                  name: 'isb_starttime',
+                  data: Buffer.from('0000000000000002', 'hex'),
+                },
+                {
+                  optionType: 3,
+                  name: 'isb_endtime',
+                  data: Buffer.from('0000000000000003', 'hex'),
+                },
+                {
+                  optionType: 4,
+                  name: 'isb_ifrecv',
+                  data: Buffer.from('0000000000000004', 'hex'),
+                },
+                {
+                  optionType: 5,
+                  name: 'isb_ifdrop',
+                  data: Buffer.from('0000000000000005', 'hex'),
+                },
+                {
+                  optionType: 6,
+                  name: 'isb_filteraccept',
+                  data: Buffer.from('0000000000000006', 'hex'),
+                },
+                {
+                  optionType: 7,
+                  name: 'isb_osdrop',
+                  data: Buffer.from('0000000000000007', 'hex'),
+                },
+                {
+                  optionType: 8,
+                  name: 'isb_usrdeliv',
+                  data: Buffer.from('0000000000000008', 'hex'),
+                },
+              ],
+            });
+            resolve();
+          } catch (er) {
+            reject(er);
+          }
+        });
+    }));
+
+    it('catches an invalid interface ID', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_STATISTICS, '00000000 11111111 22222222')}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('error', er => {
+          try {
+            assert.match(er.message, /Invalid interface/);
             resolve();
           } catch (e) {
             reject(e);

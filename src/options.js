@@ -2,6 +2,7 @@ export const SECTION_HEADER = 0x0A0D0D0A;
 export const INTERFACE_DESCRIPTION = 0x1;
 export const SIMPLE_PACKET = 0x3;
 export const NAME_RESOLUTION = 0x4;
+export const INTERFACE_STATISTICS = 0x5;
 export const ENHANCED_PACKET = 0x6;
 
 /**
@@ -53,6 +54,20 @@ export const OPTION_NAMES = new Map([
     [2, ['ns_dnsname', true]],
     [3, ['ns_dnsIP4addr']],
     [4, ['ns_dnsIP6addr']],
+    [2988, ['opt_custom', true, true]],
+    [2989, ['opt_custom', false, true]],
+    [19372, ['opt_custom', true, true]],
+    [19373, ['opt_custom', false, true]],
+  ])],
+  [INTERFACE_STATISTICS, new Map([
+    [1, ['opt_comment', true]],
+    [2, ['isb_starttime']],
+    [3, ['isb_endtime']],
+    [4, ['isb_ifrecv']],
+    [5, ['isb_ifdrop']],
+    [6, ['isb_filteraccept']],
+    [7, ['isb_osdrop']],
+    [8, ['isb_usrdeliv']],
     [2988, ['opt_custom', true, true]],
     [2989, ['opt_custom', false, true]],
     [19372, ['opt_custom', true, true]],
