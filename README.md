@@ -78,7 +78,8 @@ PCAPNGParser class fires the following events:
 - `custom`: A Custom block was parsed.
 - `blockType`: An unknown block type has been received.
 
-See the full API documentation for the types of the event parameters.
+See the full [API documentation](https://cto-af.github.io/pcap-ng-parser/) for
+the types of the event parameters.
 
 # Contribution
 
@@ -122,6 +123,7 @@ The following things have been added:
 - Added support for Custom blocks.
 - Added Enhanced Packet flag decoding.
 - Added converting timestamps to JS Dates.  Does not handle timezones yet. (BREAKING)
+- Added generate API documentation.
 
 [![Tests](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml/badge.svg)](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml)
 [![codecov](https://codecov.io/gh/cto-af/pcap-ng-parser/graph/badge.svg?token=Akjw67WYcn)](https://codecov.io/gh/cto-af/pcap-ng-parser)
