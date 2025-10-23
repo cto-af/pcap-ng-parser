@@ -2,6 +2,7 @@ import {
   CUSTOM_COPY,
   CUSTOM_NOCOPY,
   DECRYPTION_SECRETS,
+  ENHANCED_PACKET,
   INTERFACE_DESCRIPTION,
   INTERFACE_STATISTICS,
   NAME_RESOLUTION,
@@ -152,6 +153,43 @@ describe('PCAPNGParser', () => {
             reject(e);
           }
         });
+    }));
+
+    it('handles flags', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_DESCRIPTION, '0001 0000 0000FFFF')}
+${hexBlock(ENHANCED_PACKET, `
+00000000 00000000 00000000 00000000 00000000
+0002 0004 00FF0E65
+  `)}`)
+        .on('data', pkt => {
+          try {
+            assert.deepEqual(pkt.flags, {
+              direction: 'inbound',
+              reception: 'unicast',
+              FCSlen: 3,
+              noChecksum: true,
+              checksumValid: true,
+              TCPsegmentationOfflad: true,
+              linkLayerErrors: [
+                'symbol',
+                'preamble',
+                'startFrameDelimiter',
+                'unalignedFrame',
+                'wrongInterFrameGap',
+                'packetTooShort',
+                'packetTooLong',
+                'CRC',
+              ],
+            });
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        })
+        .on('error', reject)
+        .on('close', reject);
     }));
   });
 

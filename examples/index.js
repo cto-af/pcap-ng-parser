@@ -37,11 +37,20 @@ myFileStream
   .on('interface', interfaceInfo => {
     console.log('INTERFACE', interfaceInfo);
   })
-  .on('blockType', t => {
-    console.log(`Unimplemented block type: ${t}`);
-  })
   .on('names', nm => {
     console.log('NAMES', nm);
+  })
+  .on('secrets', secrets => {
+    console.log('SECRETS', secrets);
+  })
+  .on('stats', stats => {
+    console.log('STATS', stats);
+  })
+  .on('custom', custom => {
+    console.log('CUSTOM', custom);
+  })
+  .on('blockType', t => {
+    console.log(`Unimplemented block type: ${t}`);
   })
   .on('error', er => {
     console.log('ERROR', er);

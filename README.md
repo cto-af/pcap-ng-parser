@@ -120,6 +120,7 @@ The following things have been added:
 - Added support for Interface Statistics blocks.
 - Added initial Support for Decryption Secrets blocks.
 - Added support for Custom blocks.
+- Added Enhanced Packet flag decoding.
 
 [![Tests](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml/badge.svg)](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml)
 [![codecov](https://codecov.io/gh/cto-af/pcap-ng-parser/graph/badge.svg?token=Akjw67WYcn)](https://codecov.io/gh/cto-af/pcap-ng-parser)

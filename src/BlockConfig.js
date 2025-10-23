@@ -143,3 +143,9 @@ export const decryptionSecretsFormat = {
     size: 4,
   },
 };
+
+export const epbFlagsFormat = {
+  flags: {
+    size: 4,
+  },
+};
