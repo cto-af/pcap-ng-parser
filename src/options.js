@@ -4,6 +4,7 @@ export const SIMPLE_PACKET = 0x3;
 export const NAME_RESOLUTION = 0x4;
 export const INTERFACE_STATISTICS = 0x5;
 export const ENHANCED_PACKET = 0x6;
+export const DECRYPTION_SECRETS = 0xA;
 
 /**
  * @typedef {[name: string, str?: boolean, pen?: boolean]} OptionDescription
@@ -82,6 +83,13 @@ export const OPTION_NAMES = new Map([
     [6, ['epb_queue']],
     [7, ['epb_verdict']],
     [8, ['epb_processid_threadid']],
+    [2988, ['opt_custom', true, true]],
+    [2989, ['opt_custom', false, true]],
+    [19372, ['opt_custom', true, true]],
+    [19373, ['opt_custom', false, true]],
+  ])],
+  [DECRYPTION_SECRETS, new Map([
+    [1, ['opt_comment', true]],
     [2988, ['opt_custom', true, true]],
     [2989, ['opt_custom', false, true]],
     [19372, ['opt_custom', true, true]],

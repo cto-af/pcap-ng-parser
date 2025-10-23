@@ -134,3 +134,12 @@ export const interfaceStatisticsFormat = {
     size: 4,
   },
 };
+
+export const decryptionSecretsFormat = {
+  secretsType: {
+    size: 4,
+  },
+  secretsLength: {
+    size: 4,
+  },
+};

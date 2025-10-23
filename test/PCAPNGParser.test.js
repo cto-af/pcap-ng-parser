@@ -1,4 +1,5 @@
 import {
+  DECRYPTION_SECRETS,
   INTERFACE_DESCRIPTION,
   INTERFACE_STATISTICS,
   NAME_RESOLUTION,
@@ -409,6 +410,31 @@ ${hexBlock(INTERFACE_STATISTICS, '00000000 11111111 22222222')}`)
             resolve();
           } catch (e) {
             reject(e);
+          }
+        });
+    }));
+  });
+
+  describe('decryption secrets', () => {
+    it('has initial support for decryption secrets', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_DESCRIPTION, '0001 0000 0000FFFF')}
+${hexBlock(DECRYPTION_SECRETS, `
+5353484b 00000003 616200 00
+`)}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('secrets', secrets => {
+          try {
+            assert.deepEqual(secrets, {
+              secretsType: 0x5353484b,
+              data: Buffer.from('ab\0'),
+              options: [],
+            });
+            resolve();
+          } catch (er) {
+            reject(er);
           }
         });
     }));

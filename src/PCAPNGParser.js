@@ -1,5 +1,6 @@
 import * as BlockConfig from './BlockConfig.js';
 import {
+  DECRYPTION_SECRETS,
   ENHANCED_PACKET,
   INTERFACE_DESCRIPTION,
   INTERFACE_STATISTICS,
@@ -119,6 +120,13 @@ function colons(buf) {
  */
 
 /**
+ * @typedef {object} DecryptionSecrets
+ * @property {number} secretsType
+ * @property {Buffer} data
+ * @property {Option[]} options
+ */
+
+/**
  * @typedef {object} BlockConfig
  * @property {number} blockType
  * @property {number} blockTotalLength
@@ -180,6 +188,7 @@ function colons(buf) {
  *   before other parse events in a valid file.
  * @property {[]} readable Data is available to be read from the stream.
  * @property {[]} resume `stream.resume()` was called.
+ * @property {[DecryptionSecrets]} secrets A Decryption Secrets block was read.
  * @property {[InterfaceStatistics]} stats Interface Statistics block was read.
  * @property {[Readable]} unpipe `stream.unpipe()` was called.
  */
@@ -305,6 +314,9 @@ export class PCAPNGParser extends Transform {
             break;
           case ENHANCED_PACKET:
             await this.#processEnhancedPacket(block);
+            break;
+          case DECRYPTION_SECRETS:
+            await this.#processDecryptionSecrets(block);
             break;
           default:
             if (block.blockType >= 0) {
@@ -669,6 +681,33 @@ export class PCAPNGParser extends Transform {
     block.data.read(pad4(capturedPacketLength));
     pkt.options = await this.#readOptions(block);
     this.push(pkt);
+  }
+
+  /**
+   * Decryption Secrets block.
+   *
+   * @param {Block} block
+   * @returns {Promise<void>}
+   * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-decryption-secrets-block
+   */
+  async #processDecryptionSecrets(block) {
+    // TODO(@hildjj): parse the keying information for each of the spec'd
+    // secret types.
+    const {secretsType, secretsLength} =
+      await this.#readNumbers(
+        block.data,
+        BlockConfig.decryptionSecretsFormat
+      );
+
+    /** @type {DecryptionSecrets} */
+    const secrets = {
+      secretsType,
+      data: /** @type {Buffer} */(await block.data.read(secretsLength)),
+      options: [],
+    };
+    block.data.read(pad4(secretsLength));
+    secrets.options = await this.#readOptions(block);
+    this.emit('secrets', secrets);
   }
   // #endregion Process Blocks
 
