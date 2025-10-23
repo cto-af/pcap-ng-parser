@@ -160,9 +160,14 @@ ${hexBlock(INTERFACE_DESCRIPTION, '0001 0000 0000FFFF')}
 ${hexBlock(ENHANCED_PACKET, `
 00000000 00000000 00000000 00000000 00000000
 0002 0004 00FF0E65
+0006 0004 00000003
   `)}`)
         .on('data', pkt => {
           try {
+            assert.deepEqual(pkt.options, [
+              {optionType: 2, name: 'epb_flags', data: Buffer.from('00ff0e65', 'hex')},
+              {optionType: 6, name: 'epb_queue', bigint: 3n},
+            ]);
             assert.deepEqual(pkt.flags, {
               direction: 'inbound',
               reception: 'unicast',
@@ -196,7 +201,7 @@ ${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
 ${hexBlock(INTERFACE_DESCRIPTION, `
 0001 0000 0000FFFF
   0009 0001 05 000000
-  0004 0008 0000000010000000
+  000E 0008 0000000010000000
 `)}
 ${hexBlock(ENHANCED_PACKET, `
 00000000 00000001 00000000 00000000 00000000
@@ -227,7 +232,7 @@ ${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
 ${hexBlock(INTERFACE_DESCRIPTION, `
 0001 0000 0000FFFF
   0009 0001 8A 000000
-  0004 0008 0000000010000000
+  000E 0008 0000000010000000
 `)}
 ${hexBlock(ENHANCED_PACKET, `
 00000000 00000001 00000000 00000000 00000000
@@ -250,6 +255,91 @@ ${hexBlock(ENHANCED_PACKET, `
         })
         .on('error', reject)
         .on('close', reject);
+    }));
+
+    it('handles typed options', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_DESCRIPTION, `
+0001 0000 0000FFFF
+  0004 0008 7f000001 FF000000
+  0005 0011 20 01 0d b8 85 a3 08 d3 13 19 8a 2e 03 70 73 44 40 000000
+  0006 0006 010203040506 0000
+  0007 0008 0102030405060708
+  0010 0008 0000000000000001
+  0011 0008 0000000000000001
+`)}`)
+        .on('interface', int => {
+          try {
+            assert.deepEqual(int.options, [
+              {optionType: 4, name: 'if_IPv4addr', str: '127.0.0.1/255.0.0.0'},
+              {optionType: 5, name: 'if_IPv6addr', str: '2001:db8:85a3:8d3:1319:8a2e:370:7344/64'},
+              {optionType: 6, name: 'if_MACaddr', str: '01:02:03:04:05:06'},
+              {optionType: 7, name: 'if_EUIaddr', str: '01:02:03:04:05:06:07:08'},
+              {optionType: 16, name: 'if_txspeed', bigint: 1n},
+              {optionType: 17, name: 'if_rxspeed', bigint: 1n},
+            ]);
+            resolve();
+          } catch (er) {
+            reject(er);
+          }
+        })
+        .on('close', reject)
+        .on('error', reject);
+    }));
+
+    it('handles invalid ipv4mask options', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_DESCRIPTION, `
+0001 0000 0000FFFF
+  0004 0007 7f000001 FF000000
+`)}`)
+        .on('close', reject)
+        .on('error', er => {
+          try {
+            assert.match(er.message, /Invalid ipv4mask option/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+
+    it('handles invalid ipv6mask options', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_DESCRIPTION, `
+0001 0000 0000FFFF
+  0005 0007 7f000001 FF000000
+`)}`)
+        .on('close', reject)
+        .on('error', er => {
+          try {
+            assert.match(er.message, /Invalid ipv6prefix option/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+
+    it('handles invalid timestamp options', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_STATISTICS, `
+00000001 000641D5 948441C5
+  0002 0008 0000200000000000
+`)}`)
+        .on('close', reject)
+        .on('error', er => {
+          try {
+            assert.match(er.message, /Invalid interface id: 1/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
     }));
   });
 
@@ -437,8 +527,8 @@ ${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
 ${hexBlock(INTERFACE_DESCRIPTION, '0001 0000 0000FFFF')}
 ${hexBlock(INTERFACE_STATISTICS, `
 00000000 000641D5 948441C5
-  0002 0008 0000000000000002
-  0003 0008 0000000000000003
+  0002 0008 0000200000000000
+  0003 0008 0000300000000000
   0004 0008 0000000000000004
   0005 0008 0000000000000005
   0006 0008 0000000000000006
@@ -456,37 +546,37 @@ ${hexBlock(INTERFACE_STATISTICS, `
                 {
                   optionType: 2,
                   name: 'isb_starttime',
-                  data: Buffer.from('0000000000000002', 'hex'),
+                  date: new Date('1971-02-12T05:26:12.088Z'),
                 },
                 {
                   optionType: 3,
                   name: 'isb_endtime',
-                  data: Buffer.from('0000000000000003', 'hex'),
+                  date: new Date('1971-09-03T20:09:18.133Z'),
                 },
                 {
                   optionType: 4,
                   name: 'isb_ifrecv',
-                  data: Buffer.from('0000000000000004', 'hex'),
+                  bigint: 4n,
                 },
                 {
                   optionType: 5,
                   name: 'isb_ifdrop',
-                  data: Buffer.from('0000000000000005', 'hex'),
+                  bigint: 5n,
                 },
                 {
                   optionType: 6,
                   name: 'isb_filteraccept',
-                  data: Buffer.from('0000000000000006', 'hex'),
+                  bigint: 6n,
                 },
                 {
                   optionType: 7,
                   name: 'isb_osdrop',
-                  data: Buffer.from('0000000000000007', 'hex'),
+                  bigint: 7n,
                 },
                 {
                   optionType: 8,
                   name: 'isb_usrdeliv',
-                  data: Buffer.from('0000000000000008', 'hex'),
+                  bigint: 8n,
                 },
               ],
             });

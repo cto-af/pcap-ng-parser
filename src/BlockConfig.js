@@ -154,3 +154,33 @@ export const ifTsOffsetFormat = {
     sign: true,
   },
 };
+
+export const ipv4MaskFormat = {
+  ipv4: {
+    size: 4,
+  },
+  mask: {
+    size: 4,
+  },
+};
+
+export const u32Format = {
+  u32: {
+    size: 4,
+  },
+};
+
+export const u64Format = {
+  u64: {
+    size: 8,
+  },
+};
+
+export const timestampFormat = {
+  timestampHigh: {
+    size: 4,
+  },
+  timestampLow: {
+    size: 4,
+  },
+};
