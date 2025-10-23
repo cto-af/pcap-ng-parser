@@ -51,23 +51,21 @@ describe('PCAPNGParser', () => {
         });
     });
 
-    it('should return an object with properties interfaceId, timestampHigh, timestampLow, data & ethernet', () => {
+    it('should return an object with properties interfaceId, timestamp, data & ethernet', () => {
       const bufferStream0 = fs.createReadStream('./test/buffer/buffer0');
       const bufferStream1 = fs.createReadStream('./test/buffer/buffer1');
       bufferStream0
         .pipe(pcapNgParser, {end: false})
         .on('data', parsedPacket => {
           assert.property(parsedPacket, 'interfaceId', 'parsedPacket has property interfaceId');
-          assert.property(parsedPacket, 'timestampHigh', 'parsedPacket has property interfaceId');
-          assert.property(parsedPacket, 'timestampLow', 'parsedPacket has property interfaceId');
+          assert.property(parsedPacket, 'timestamp', 'parsedPacket has property interfaceId');
           assert.property(parsedPacket, 'data', 'parsedPacket has property interfaceId');
         });
       bufferStream1
         .pipe(pcapNgParser, {end: false})
         .on('data', parsedPacket => {
           assert.property(parsedPacket, 'interfaceId', 'parsedPacket has property interfaceId');
-          assert.property(parsedPacket, 'timestampHigh', 'parsedPacket has property interfaceId');
-          assert.property(parsedPacket, 'timestampLow', 'parsedPacket has property interfaceId');
+          assert.property(parsedPacket, 'timestamp', 'parsedPacket has property interfaceId');
           assert.property(parsedPacket, 'data', 'parsedPacket has property interfaceId');
         });
     });
@@ -186,6 +184,68 @@ ${hexBlock(ENHANCED_PACKET, `
             resolve();
           } catch (e) {
             reject(e);
+          }
+        })
+        .on('error', reject)
+        .on('close', reject);
+    }));
+
+    it('handles decimal timestamp offsets', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_DESCRIPTION, `
+0001 0000 0000FFFF
+  0009 0001 05 000000
+  0004 0008 0000000010000000
+`)}
+${hexBlock(ENHANCED_PACKET, `
+00000000 00000001 00000000 00000000 00000000
+  `)}`)
+        .on('data', pkt => {
+          try {
+            assert.deepEqual(pkt.timestamp, new Date(268478405672));
+            resolve();
+          } catch (er) {
+            reject(er);
+          }
+        })
+        .on('interface', int => {
+          try {
+            assert.equal(int.tsresol, 100n);
+            assert.equal(int.tsoffset, 0x0000000010000000n * 1000n);
+          } catch (er) {
+            reject(er);
+          }
+        })
+        .on('error', reject)
+        .on('close', reject);
+    }));
+
+    it('handles binary timestamp offsets', () => new Promise((resolve, reject) => {
+      parseHex(`
+${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
+${hexBlock(INTERFACE_DESCRIPTION, `
+0001 0000 0000FFFF
+  0009 0001 8A 000000
+  0004 0008 0000000010000000
+`)}
+${hexBlock(ENHANCED_PACKET, `
+00000000 00000001 00000000 00000000 00000000
+  `)}`)
+        .on('data', pkt => {
+          try {
+            assert.deepEqual(pkt.timestamp, new Date('1978-08-23T14:27:03.296Z'));
+            resolve();
+          } catch (er) {
+            reject(er);
+          }
+        })
+        .on('interface', int => {
+          try {
+            assert.equal(int.tsresol, 1n);
+            assert.equal(int.tsoffset, 0x0000000010000000n * 1000n);
+          } catch (er) {
+            reject(er);
           }
         })
         .on('error', reject)
@@ -376,7 +436,7 @@ ${hexBlock(NAME_RESOLUTION, '0004 0008 0102030405060708')}`)
 ${hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF')}
 ${hexBlock(INTERFACE_DESCRIPTION, '0001 0000 0000FFFF')}
 ${hexBlock(INTERFACE_STATISTICS, `
-00000000 11111111 22222222
+00000000 000641D5 948441C5
   0002 0008 0000000000000002
   0003 0008 0000000000000003
   0004 0008 0000000000000004
@@ -391,8 +451,7 @@ ${hexBlock(INTERFACE_STATISTICS, `
           try {
             assert.deepEqual(stats, {
               interfaceId: 0,
-              timestampHigh: 286331153,
-              timestampLow: 572662306,
+              timestamp: new Date('2025-10-23T16:03:55.798Z'),
               options: [
                 {
                   optionType: 2,

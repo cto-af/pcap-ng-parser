@@ -98,6 +98,8 @@ function colons(buf) {
  * @property {number} linkType See https://datatracker.ietf.org/doc/html/draft-ietf-opsawg-pcaplinktype for info.
  * @property {number} snapLen Capture length.
  * @property {string} [name] Interface name.
+ * @property {bigint} tsoffset Offset, in MS, applied to each timestamp.
+ * @property {bigint} tsresol Timestamp resolution in MS.
  * @property {Option[]} options All interface options.
  */
 
@@ -154,8 +156,7 @@ function colons(buf) {
 /**
  * @typedef {object} Packet
  * @property {number} interfaceId
- * @property {number} [timestampHigh]
- * @property {number} [timestampLow]
+ * @property {Date} [timestamp]
  * @property {PacketFlags} [flags]
  * @property {number} originalPacketLength
  * @property {Buffer} data
@@ -165,8 +166,7 @@ function colons(buf) {
 /**
  * @typedef {object} InterfaceStatistics
  * @property {number} interfaceId
- * @property {number} timestampHigh
- * @property {number} timestampLow
+ * @property {Date} timestamp
  * @property {Option[]} options
  */
 
@@ -513,9 +513,9 @@ export class PCAPNGParser extends Transform {
   async #readNumbers(nof, blockDescriptor) {
     /** @type {Partial<Record<keyof T, number>>} */
     const props = {};
-    for (const [prop, {size, signed, big}] of Object.entries(blockDescriptor)) {
+    for (const [prop, {size, signed}] of Object.entries(blockDescriptor)) {
       const buf = await nof.readFull(size);
-      const readMethod = `read${big ? 'Big' : ''}${signed ? '' : 'U'}Int${size * 8}${this.#endianess}`;
+      const readMethod = `read${(size === 8) ? 'Big' : ''}${signed ? '' : 'U'}Int${size * 8}${this.#endianess}`;
       // @ts-expect-error readMethod hides type
       props[prop] = buf[readMethod](0);
     }
@@ -523,6 +523,27 @@ export class PCAPNGParser extends Transform {
   }
 
   // #endregion Read
+  // #region utilities
+
+  /**
+   * Convert the given timestamp to real clock time.
+   *
+   * @param {number} stampHigh
+   * @param {number} stampLow
+   * @param {number} interfaceId Known valid.
+   * @returns {Date}
+   * @throws {Error} On invalid interface ID.
+   */
+  #timestamp(stampHigh, stampLow, interfaceId) {
+    // Don't read as bigint, since each half could be LE.
+    const stamp = (BigInt(stampHigh) << 32n) | BigInt(stampLow);
+    const int = this.interfaces[interfaceId];
+
+    const off = int.tsoffset + (stamp / int.tsresol);
+    return new Date(Number(off));
+  }
+
+  // #endregion
   // #region Process Blocks
 
   /**
@@ -563,13 +584,36 @@ export class PCAPNGParser extends Transform {
     const iData = {
       linkType: idRes.linkType,
       snapLen: idRes.snapLen,
+      tsoffset: 0n,
+      tsresol: 1000n,
       options: await this.#readOptions(block),
     };
-    iData.options.forEach(opt => {
-      if (opt.optionType === 2) {
-        iData.name = /** @type {string} */ (opt.str);
+    for (const opt of iData.options) {
+      switch (opt.optionType) {
+        case 2:
+          iData.name = /** @type {string} */ (opt.str);
+          break;
+        case 4: {
+          const {tsoffset} = await this.#readNumbers(
+            new NoFilter(opt.data),
+            BlockConfig.ifTsOffsetFormat
+          );
+          iData.tsoffset = BigInt(tsoffset) * 1000n;
+          break;
+        }
+        case 9: {
+          const [tsresol] = /** @type {Buffer} */(opt.data);
+          if (tsresol & 0x80) {
+            // This is going to lose precision.  Hope nobody does this in
+            // practice.
+            iData.tsresol = (1n << BigInt(tsresol & 0x7F)) / 1000n;
+          } else {
+            iData.tsresol = 10n ** (BigInt(tsresol) - 3n);
+          }
+          break;
+        }
       }
-    });
+    }
 
     this.interfaces.push(iData);
 
@@ -707,10 +751,11 @@ export class PCAPNGParser extends Transform {
     if (interfaceId >= this.interfaces.length) {
       throw new Error(`Invalid interface id: ${interfaceId}`);
     }
+
+    /** @type {InterfaceStatistics} */
     const stats = {
       interfaceId,
-      timestampHigh,
-      timestampLow,
+      timestamp: this.#timestamp(timestampHigh, timestampLow, interfaceId),
       options: await this.#readOptions(block),
     };
     this.emit('stats', stats);
@@ -724,19 +769,25 @@ export class PCAPNGParser extends Transform {
    * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-enhanced-packet-block
    */
   async #processEnhancedPacket(block) {
-    const {capturedPacketLength, ...id} =
-      await this.#readNumbers(
-        block.data,
-        BlockConfig.enhancedPacketBlockFormat
-      );
+    const {
+      interfaceId,
+      timestampHigh,
+      timestampLow,
+      capturedPacketLength,
+      originalPacketLength,
+    } = await this.#readNumbers(
+      block.data, BlockConfig.enhancedPacketBlockFormat
+    );
 
-    if (id.interfaceId >= this.interfaces.length) {
-      throw new Error(`Invalid interface ID: ${id.interfaceId} >= ${this.interfaces.length}`);
+    if (interfaceId >= this.interfaces.length) {
+      throw new Error(`Invalid interface ID: ${interfaceId} >= ${this.interfaces.length}`);
     }
 
     /** @type {Packet} */
     const pkt = {
-      ...id,
+      interfaceId,
+      timestamp: this.#timestamp(timestampHigh, timestampLow, interfaceId),
+      originalPacketLength,
       data: /** @type {Buffer} */(block.data.read(capturedPacketLength)),
       options: [],
     };

@@ -121,6 +121,7 @@ The following things have been added:
 - Added initial Support for Decryption Secrets blocks.
 - Added support for Custom blocks.
 - Added Enhanced Packet flag decoding.
+- Added converting timestamps to JS Dates.  Does not handle timezones yet. (BREAKING)
 
 [![Tests](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml/badge.svg)](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml)
 [![codecov](https://codecov.io/gh/cto-af/pcap-ng-parser/graph/badge.svg?token=Akjw67WYcn)](https://codecov.io/gh/cto-af/pcap-ng-parser)
