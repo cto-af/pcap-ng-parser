@@ -63,7 +63,9 @@ longer uses the pcapng format.
 
 Additional examples can be found in the [examples directory](/examples/).
 
-It allows you to read from a sample capture file (the default), a file (if you specify a file name on the command line), or stdin (if you specify "-" as the input file).
+It allows you to read from a sample capture file (the default), a file (if you
+specify a file name on the command line), or stdin (if you specify "-" as the
+input file).
 
 # Class PCAPNGParser
 
