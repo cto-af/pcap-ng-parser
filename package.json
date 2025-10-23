@@ -21,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/cto-af/pcap-ng-parser.git"
+    "url": "git+https://github.com/cto-af/pcap-ng-parser.git"
   },
   "keywords": [
     "pcap-ng",
