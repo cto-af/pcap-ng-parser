@@ -16,6 +16,7 @@ import {Transform} from 'node:stream';
 import {decode as ipDecode} from '@leichtgewicht/ip-codec';
 
 /** @import {Readable, TransformCallback} from 'node:stream' */
+/** @import {OptionType} from './options.js' */
 
 const EPB_FLAGS_DIRECTIONS = /** @type {const} */([
   'notAvailable',
@@ -205,6 +206,8 @@ function colons(buf) {
  * @property {number} [dataLength]
  * @property {Buffer} [data]
  * @property {string} [str]
+ * @property {bigint} [bigint]
+ * @property {Date} [date]
  * @property {string} [name]
  * @property {boolean} [private]
  */
@@ -445,9 +448,10 @@ export class PCAPNGParser extends Transform {
 
   /**
    * @param {Block} block
+   * @param {number} [interfaceId]
    * @returns {Promise<Option[]>}
    */
-  async #readOptions(block) {
+  async #readOptions(block, interfaceId) {
     let foundEndOption = false;
 
     /** @type {Option[]} */
@@ -462,12 +466,15 @@ export class PCAPNGParser extends Transform {
         /** @type {PrivateEnterpriseNumber | undefined} */
         let pen = undefined;
         let name = undefined;
-        let str = false;
+
+        /** @type {OptionType} */
+        let typ = undefined;
 
         const desc = OPTION_NAMES.get(block.blockType)?.get(rb.optionType);
         if (desc) {
           name = {name: desc[0]};
-          str = Boolean(desc[1]);
+          // eslint-disable-next-line prefer-destructuring
+          typ = desc[1];
           if (desc[2]) {
             pen = await this.#readNumbers(
               block.data, BlockConfig.privateEnterpriseNumber
@@ -486,11 +493,62 @@ export class PCAPNGParser extends Transform {
         if (rb.optionType & 0x8000) {
           opt.private = true;
         }
-        if (str) {
-          opt.str = /** @type {Buffer} */(opt.data).toString('utf-8')
-            .replaceAll('\0', '')
-            .trim();
-          delete opt.data;
+        switch (typ) {
+          case 'string':
+            opt.str = /** @type {Buffer} */(opt.data).toString('utf-8')
+              .replaceAll('\0', '')
+              .trim();
+            delete opt.data;
+            break;
+          case 'ipv4':
+          case 'ipv6':
+            opt.str = ipDecode(/** @type {Buffer}*/(opt.data));
+            delete opt.data;
+            break;
+          case 'ipv4mask':
+            if (!opt.data || (opt.data.length !== 8)) {
+              throw new Error('Invalid ipv4mask option');
+            }
+            opt.str = `${ipDecode(opt.data.subarray(0, 4))}/${ipDecode(opt.data.subarray(4, 8))}`;
+            delete opt.data;
+            break;
+          case 'ipv6prefix':
+            if (!opt.data || (opt.data.length !== 17)) {
+              throw new Error('Invalid ipv6prefix option');
+            }
+            opt.str = `${ipDecode(opt.data.subarray(0, 16))}/${opt.data[16]}`;
+            delete opt.data;
+            break;
+          case 'eui':
+            opt.str = colons(/** @type {Buffer} */ (opt.data));
+            delete opt.data;
+            break;
+          case 'u32': {
+            const {u32} = await this.#readNumbers(
+              new NoFilter(opt.data), BlockConfig.u32Format
+            );
+            opt.bigint = BigInt(u32);
+            delete opt.data;
+            break;
+          }
+          case 'u64': {
+            const {u64} = await this.#readNumbers(
+              new NoFilter(opt.data), BlockConfig.u64Format
+            );
+            opt.bigint = BigInt(u64);
+            delete opt.data;
+            break;
+          }
+          case 'timestamp': {
+            const {timestampHigh, timestampLow} = await this.#readNumbers(
+              new NoFilter(opt.data),
+              BlockConfig.timestampFormat
+            );
+            opt.date = this.#timestamp(
+              timestampHigh, timestampLow, /** @type {number} */(interfaceId)
+            );
+            delete opt.data;
+          }
         }
         delete opt.dataLength;
 
@@ -593,12 +651,8 @@ export class PCAPNGParser extends Transform {
         case 2:
           iData.name = /** @type {string} */ (opt.str);
           break;
-        case 4: {
-          const {tsoffset} = await this.#readNumbers(
-            new NoFilter(opt.data),
-            BlockConfig.ifTsOffsetFormat
-          );
-          iData.tsoffset = BigInt(tsoffset) * 1000n;
+        case 14: {
+          iData.tsoffset = /** @type {bigint} */(opt.bigint) * 1000n;
           break;
         }
         case 9: {
@@ -727,12 +781,6 @@ export class PCAPNGParser extends Transform {
       }
     }
     res.options = await this.#readOptions(block);
-    for (const o of res.options) {
-      if (o.data && ((o.optionType === 3) || (o.optionType === 4))) {
-        o.str = ipDecode(o.data);
-        delete o.data;
-      }
-    }
     this.emit('names', res);
   }
 
@@ -756,7 +804,7 @@ export class PCAPNGParser extends Transform {
     const stats = {
       interfaceId,
       timestamp: this.#timestamp(timestampHigh, timestampLow, interfaceId),
-      options: await this.#readOptions(block),
+      options: await this.#readOptions(block, interfaceId),
     };
     this.emit('stats', stats);
   }
@@ -793,7 +841,7 @@ export class PCAPNGParser extends Transform {
     };
 
     block.data.read(pad4(capturedPacketLength));
-    pkt.options = await this.#readOptions(block);
+    pkt.options = await this.#readOptions(block, interfaceId);
     for (const o of pkt.options) {
       if (o.optionType === 2) { // Type epb_flags
         let {flags} = await this.#readNumbers(
