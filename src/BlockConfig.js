@@ -2,7 +2,6 @@
  * @typedef {object} BlockProperty
  * @property {number} size Bytes.
  * @property {boolean} [signed] If true, read signed.
- * @property {boolean} [big] If true, read a bigint.
  */
 
 /**
@@ -25,7 +24,6 @@ export const sectionHeaderBlock = {
   sectionLength: {
     size: 8,
     signed: true,
-    big: true,
   },
 };
 
@@ -147,5 +145,12 @@ export const decryptionSecretsFormat = {
 export const epbFlagsFormat = {
   flags: {
     size: 4,
+  },
+};
+
+export const ifTsOffsetFormat = {
+  tsoffset: {
+    size: 8,
+    sign: true,
   },
 };
