@@ -24,7 +24,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs
+          publish_dir: doc
           publish_branch: gh-pages
       - run: npm pkg delete pnpm devDependencies scripts
       - run: npm publish --access public --provenance
