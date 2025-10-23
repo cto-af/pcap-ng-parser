@@ -1,5 +1,7 @@
 import * as BlockConfig from './BlockConfig.js';
 import {
+  CUSTOM_COPY,
+  CUSTOM_NOCOPY,
   DECRYPTION_SECRETS,
   ENHANCED_PACKET,
   INTERFACE_DESCRIPTION,
@@ -127,6 +129,13 @@ function colons(buf) {
  */
 
 /**
+ * @typedef {object} CustomBlock
+ * @property {number} pen
+ * @property {Buffer} data
+ * @property {boolean} copy
+ */
+
+/**
  * @typedef {object} BlockConfig
  * @property {number} blockType
  * @property {number} blockTotalLength
@@ -173,6 +182,7 @@ function colons(buf) {
  * @typedef {object} ParseEvents
  * @property {[number]} blockType Unknown block type received.
  * @property {[]} close Both ends of the stream have closed.
+ * @property {[CustomBlock]} custom A Custom block was read.
  * @property {[Packet]} data A Simple or Extended Packet was read.
  * @property {[]} drain If a call to stream.write(chunk) returns false, the
  *   'drain' event will be emitted when it is appropriate to resume writing
@@ -317,6 +327,10 @@ export class PCAPNGParser extends Transform {
             break;
           case DECRYPTION_SECRETS:
             await this.#processDecryptionSecrets(block);
+            break;
+          case CUSTOM_COPY:
+          case CUSTOM_NOCOPY:
+            await this.#processCustom(block);
             break;
           default:
             if (block.blockType >= 0) {
@@ -708,6 +722,26 @@ export class PCAPNGParser extends Transform {
     block.data.read(pad4(secretsLength));
     secrets.options = await this.#readOptions(block);
     this.emit('secrets', secrets);
+  }
+
+  /**
+   * Custom block.
+   * @param {Block} block
+   * @returns {Promise<void>}
+   */
+  async #processCustom(block) {
+    const {pen} = await this.#readNumbers(
+      block.data, BlockConfig.privateEnterpriseNumber
+    );
+
+    // For options, see:
+    // https://github.com/IETF-OPSAWG-WG/draft-ietf-opsawg-pcap/issues/125
+    const custom = {
+      pen,
+      data: /** @type {Buffer} */(block.data.read()),
+      copy: (block.blockType === CUSTOM_COPY),
+    };
+    this.emit('custom', custom);
   }
   // #endregion Process Blocks
 

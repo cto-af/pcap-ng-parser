@@ -5,6 +5,8 @@ export const NAME_RESOLUTION = 0x4;
 export const INTERFACE_STATISTICS = 0x5;
 export const ENHANCED_PACKET = 0x6;
 export const DECRYPTION_SECRETS = 0xA;
+export const CUSTOM_COPY = 0x00000BAD;
+export const CUSTOM_NOCOPY = 0x40000BAD;
 
 /**
  * @typedef {[name: string, str?: boolean, pen?: boolean]} OptionDescription
