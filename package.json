@@ -1,6 +1,6 @@
 {
   "name": "@cto.af/pcap-ng-parser",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Node.js Module for parsing .pcapng files and tcpdump output.",
   "main": "./src/PCAPNGParser.js",
   "types": "./types/PCAPNGParser.d.ts",
