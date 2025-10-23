@@ -8,6 +8,7 @@ export default [
   {
     ignores: [
       'types/**',
+      'doc/**',
     ],
   },
   ...es6,

@@ -13,9 +13,10 @@ const pcapNgParser = new PCAPNGParser();
 
 const filename = process.argv[2] ?? new URL('./res/myfile.pcapng', import.meta.url);
 
-// To pipe from tcpdump:
-// const myFileStream = process.stdin
-const myFileStream = fs.createReadStream(filename);
+// To pipe from tcpdump, use '-' as the filename.
+const myFileStream = filename === '-' ?
+  process.stdin :
+  fs.createReadStream(filename);
 
 myFileStream
   .pipe(pcapNgParser)
@@ -39,7 +40,9 @@ myFileStream
   .on('blockType', t => {
     console.log(`Unimplemented block type: ${t}`);
   })
+  .on('names', nm => {
+    console.log('NAMES', nm);
+  })
   .on('error', er => {
     console.log('ERROR', er);
   });
-

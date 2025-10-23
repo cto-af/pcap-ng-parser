@@ -1,4 +1,6 @@
+import {NAME_RESOLUTION, SECTION_HEADER} from '../src/options.js';
 import {Buffer} from 'node:buffer';
+import {NoFilter} from 'nofilter';
 import PCAPNGParser from '../src/PCAPNGParser.js';
 import {assert} from 'chai';
 import fs from 'node:fs';
@@ -10,6 +12,17 @@ function parseHex(hex, opts) {
   const buf = Buffer.from(hex.replace(/\s/g, ''), 'hex');
   parser.end(buf);
   return parser;
+}
+
+function hexBlock(blockType, hex) {
+  const buf = Buffer.from(hex.replace(/\s/g, ''), 'hex');
+  const nof = new NoFilter();
+  nof.writeUInt32BE(blockType);
+  nof.writeUInt32BE(buf.length + 12);
+  nof.write(buf);
+  nof.writeUInt32BE(buf.length + 12);
+  const h = nof.toString('hex');
+  return h;
 }
 
 describe('PCAPNGParser', () => {
@@ -173,13 +186,151 @@ describe('PCAPNGParser', () => {
     }));
   });
 
+  describe('name resolution', () => {
+    it('handles name resolution packets', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001C
+${hexBlock(NAME_RESOLUTION, `
+  0001 000E 7F000001 6c6f63616c686f737400 0000
+  0002 001a 00000000000000000000000000000001 6c6f63616c686f737400 0000
+  0003 0010 010203040506 6c6f63616c686f737400
+  0004 0012 0102030405060708 6c6f63616c686f737400 0000
+  0000 0000
+  0001 0004 616200 00
+  0002 0004 616200 00
+  0003 0004 7f000001
+  0004 0010 00000000000000000000000000000001
+  0000 0000
+  0000 0000`)}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('names', n => {
+          try {
+            assert.deepEqual(n, {
+              records: [
+                {
+                  name: 'nrb_record_ipv4',
+                  ipv4: '127.0.0.1',
+                  entries: ['localhost'],
+                },
+                {
+                  name: 'nrb_record_ipv6',
+                  ipv6: '::1',
+                  entries: ['localhost'],
+                },
+                {
+                  name: 'nrb_record_eui48',
+                  eui48: '01:02:03:04:05:06',
+                  entries: ['localhost'],
+                },
+                {
+                  name: 'nrb_record_eui64',
+                  eui64: '01:02:03:04:05:06:07:08',
+                  entries: ['localhost'],
+                },
+              ],
+              options: [
+                {
+                  name: 'opt_comment',
+                  optionType: 1,
+                  str: 'ab',
+                },
+                {
+                  name: 'ns_dnsname',
+                  optionType: 2,
+                  str: 'ab',
+                },
+                {
+                  name: 'ns_dnsIP4addr',
+                  optionType: 3,
+                  str: '127.0.0.1',
+                },
+                {
+                  name: 'ns_dnsIP6addr',
+                  optionType: 4,
+                  str: '::1',
+                },
+              ],
+            });
+            resolve();
+          } catch (er) {
+            reject(er);
+          }
+        });
+    }));
+
+    it('handles short nrb_record_ipv4 records', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001C
+${hexBlock(NAME_RESOLUTION, '0001 0004 7F000001')}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('error', er => {
+          try {
+            assert.match(er, /Invalid nrb_record_ipv4 record/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+
+    it('handles short nrb_record_ipv6 records', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001C
+${hexBlock(NAME_RESOLUTION, '0002 0010 00000000000000000000000000000001')}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('error', er => {
+          try {
+            assert.match(er, /Invalid nrb_record_ipv6 record/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+
+    it('handles short nrb_record_eui48 records', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001C
+${hexBlock(NAME_RESOLUTION, '0003 0006 010203040506 0000')}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('error', er => {
+          try {
+            assert.match(er, /Invalid nrb_record_eui48 record/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+
+    it('handles short nrb_record_eui64 records', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001C
+${hexBlock(NAME_RESOLUTION, '0004 0008 0102030405060708')}`)
+        .on('data', reject)
+        .on('close', reject)
+        .on('error', er => {
+          try {
+            assert.match(er, /Invalid nrb_record_eui64 record/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+    }));
+  });
+
   describe('edge cases', () => {
     it('detects bad blockTypes', () => new Promise((resolve, reject) => {
       parseHex('01010101 1C000000 4D3C2B1A 0001 0000 FFFFFFFFFFFFFFFF 1C000000')
         .on('data', reject)
         .on('error', er => {
           try {
-            assert.match(er.message, /Invalid first block/);
+            assert.match(er.message, /File not in pcapng format/);
             resolve();
           } catch {
             reject(er);
@@ -276,7 +427,7 @@ describe('PCAPNGParser', () => {
       parseHex('')
         .on('error', er => {
           try {
-            assert.match(er.message, /At least one Section Header required/);
+            assert.match(er.message, /Stream finished before 4 bytes/);
             resolve();
           } catch (e) {
             reject(e);
@@ -293,7 +444,7 @@ describe('PCAPNGParser', () => {
 
     it('handles AbortSignals', () => new Promise((resolve, reject) => {
       const ac = new AbortController();
-      parseHex('0A0D', {signal: ac.signal})
+      const parser = new PCAPNGParser({signal: ac.signal})
         .on('error', er => {
           try {
             assert.match(er.message, /aborted/);
@@ -304,7 +455,10 @@ describe('PCAPNGParser', () => {
         })
         .on('data', reject)
         .on('close', reject);
-      ac.abort();
+      const hex = hexBlock(SECTION_HEADER, '1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF');
+      parser.write(Buffer.from(hex, 'hex'), () => {
+        ac.abort();
+      });
     }));
 
     it('has typesafe events', () => {

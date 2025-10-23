@@ -2,12 +2,14 @@ import * as BlockConfig from './BlockConfig.js';
 import {
   ENHANCED_PACKET,
   INTERFACE_DESCRIPTION,
+  NAME_RESOLUTION,
   OPTION_NAMES,
   SECTION_HEADER,
   SIMPLE_PACKET,
 } from './options.js';
-import {NoFilter} from 'nofilter';
+import {NoFilter, TruncationError} from 'nofilter';
 import {Transform} from 'node:stream';
+import {decode as ipDecode} from '@leichtgewicht/ip-codec';
 
 /** @import {Readable, TransformCallback} from 'node:stream' */
 
@@ -34,6 +36,19 @@ function processByteOrderMagic(byteOrderMagic) {
   }
   throw new Error(`Unable to determine endian from ${byteOrderMagic.toString(16)}`);
 }
+
+/**
+ * Convert buffer to hex string with colon separators (e.g. Ethernet address).
+ *
+ * @param {Buffer} buf
+ * @returns {string}
+ */
+function colons(buf) {
+  return Array.from(buf)
+    .map(x => x.toString(16).padStart(2, '0'))
+    .join(':');
+}
+
 // #endregion Utility methods
 // #region Types
 
@@ -43,6 +58,45 @@ function processByteOrderMagic(byteOrderMagic) {
  * @property {number} snapLen Capture length.
  * @property {string} [name] Interface name.
  * @property {Option[]} options All interface options.
+ */
+
+/**
+ * @typedef {object} IPv4ResolutionRecord
+ * @property {'nrb_record_ipv4'} name
+ * @property {string} ipv4
+ * @property {string[]} entries
+ */
+
+/**
+ * @typedef {object} IPv6ResolutionRecord
+ * @property {'nrb_record_ipv6'} name
+ * @property {string} ipv6
+ * @property {string[]} entries
+ */
+
+/**
+ * @typedef {object} EUI48ResolutionRecord
+ * @property {'nrb_record_eui48'} name
+ * @property {string} eui48
+ * @property {string[]} entries
+ */
+
+/**
+ * @typedef {object} EUI64ResolutionRecord
+ * @property {'nrb_record_eui64'} name
+ * @property {string} eui64
+ * @property {string[]} entries
+ */
+
+/**
+ * @typedef {IPv4ResolutionRecord | IPv6ResolutionRecord |
+ *   EUI48ResolutionRecord | EUI64ResolutionRecord} NameResolutionRecord
+ */
+
+/**
+ * @typedef {object} NameResolution
+ * @property {NameResolutionRecord[]} records
+ * @property {Option[]} options NameResolution options.
  */
 
 /**
@@ -105,20 +159,24 @@ function processByteOrderMagic(byteOrderMagic) {
 
 /**
  * @typedef {object} ParseEvents
- * @property {[number]} blockType
- * @property {[]} close
- * @property {[Packet]} data
- * @property {[]} drain
- * @property {[]} end
- * @property {[unknown]} error
- * @property {[]} finish
- * @property {[Interface]} interface
- * @property {[]} pause
- * @property {[Readable]} pipe
- * @property {[SectionHeader]} section
- * @property {[]} readable
- * @property {[]} resume
- * @property {[Readable]} unpipe
+ * @property {[number]} blockType Unknown block type received.
+ * @property {[]} close Both ends of the stream have closed.
+ * @property {[Packet]} data A Simple or Extended Packet was read.
+ * @property {[]} drain If a call to stream.write(chunk) returns false, the
+ *   'drain' event will be emitted when it is appropriate to resume writing
+ *   data to the stream.
+ * @property {[]} end There is no more data to be consumed from the stream.
+ * @property {[unknown]} error Error in parsing.
+ * @property {[]} finish The input to the parse stream has ended.
+ * @property {[Interface]} interface An Interface record was read.
+ * @property {[NameResolution]} names A NameResolution record was read.
+ * @property {[]} pause `stream.pause()` was called.
+ * @property {[Readable]} pipe Output of stream was redirect.
+ * @property {[SectionHeader]} section A new Section has started. Always emitted
+ *   before other parse events in a valid file.
+ * @property {[]} readable Data is available to be read from the stream.
+ * @property {[]} resume `stream.resume()` was called.
+ * @property {[Readable]} unpipe `stream.unpipe()` was called.
  */
 
 /**
@@ -214,12 +272,16 @@ export class PCAPNGParser extends Transform {
    */
   async #readFile(nof) {
     try {
+      await nof.waitFor(4);
+      const magic = /** @type {Buffer} */(await nof.slice(0, 4));
+      if (magic.readUint32BE(0) !== SECTION_HEADER) {
+        throw new Error('File not in pcapng format');
+      }
       while (true) {
         const block = await this.#readBlock(nof);
         if (!block) {
           break;
         }
-        this.#checkStart(block.blockType);
         switch (block.blockType) {
           case SECTION_HEADER:
             await this.#processSectionHeader(block);
@@ -230,6 +292,9 @@ export class PCAPNGParser extends Transform {
           case SIMPLE_PACKET:
             await this.#processSimplePacket(block);
             break;
+          case NAME_RESOLUTION:
+            await this.#processNameResolution(block);
+            break;
           case ENHANCED_PACKET:
             await this.#processEnhancedPacket(block);
             break;
@@ -237,9 +302,9 @@ export class PCAPNGParser extends Transform {
             if (block.blockType >= 0) {
               this.emit('blockType', block.blockType);
             }
+            break;
         }
       }
-      this.#checkStart(-1);
     } catch (er) {
       this.emit('error', er);
     }
@@ -259,8 +324,7 @@ export class PCAPNGParser extends Transform {
       );
       bt = blockType;
     } catch (er) {
-      if ((er instanceof Error) &&
-          (er.message === 'Stream finished before 4 bytes were available')) {
+      if ((er instanceof TruncationError) && (er.size === 4)) {
         // Done.  OK to be done at the start of a block.
         return undefined;
       }
@@ -376,22 +440,6 @@ export class PCAPNGParser extends Transform {
   }
 
   // #endregion Read
-  // #region Check
-
-  /**
-   * @param {number} blockType
-   * @throws {Error} Invalid first block.
-   */
-  #checkStart(blockType) {
-    if (!this.#sectionHeader && (blockType !== SECTION_HEADER)) {
-      if (blockType === -1) {
-        throw new Error('At least one Section Header required');
-      }
-      throw new Error(`Invalid first block 0x${blockType.toString(16)}, must be 0x${SECTION_HEADER.toString(16)}`);
-    }
-  }
-
-  // #endregion Check
   // #region Process Blocks
 
   /**
@@ -472,6 +520,93 @@ export class PCAPNGParser extends Transform {
     };
     // Skip dealing with padding
     this.push(pkt);
+  }
+
+  /**
+   * Name Resolution Block.
+   *
+   * @param {Block} block
+   * @returns {Promise<void>}
+   * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html#name-name-resolution-block
+   */
+  async #processNameResolution(block) {
+    /** @type {NameResolution} */
+    const res = {
+      records: [],
+      options: [],
+    };
+    while (true) {
+      const {recordType, recordValueLength} = await this.#readNumbers(
+        block.data, BlockConfig.nameResolutionFormat
+      );
+      if (recordType === 0) {
+        break;
+      }
+      const val = /** @type {Buffer} */ (block.data.read(recordValueLength));
+      block.data.read(pad4(recordValueLength));
+      switch (recordType) {
+        case 0x0001:
+          if (recordValueLength < 6) {
+            throw new Error('Invalid nrb_record_ipv4 record');
+          }
+          res.records.push({
+            name: 'nrb_record_ipv4',
+            ipv4: ipDecode(val.subarray(0, 4)),
+            entries: val.subarray(4)
+              .toString()
+              .split('\x00')
+              .slice(0, -1),
+          });
+          break;
+        case 0x0002:
+          if (recordValueLength < 18) {
+            throw new Error('Invalid nrb_record_ipv6 record');
+          }
+          res.records.push({
+            name: 'nrb_record_ipv6',
+            ipv6: ipDecode(val.subarray(0, 16)),
+            entries: val.subarray(16)
+              .toString()
+              .split('\x00')
+              .slice(0, -1),
+          });
+          break;
+        case 0x0003:
+          if (recordValueLength < 8) {
+            throw new Error('Invalid nrb_record_eui48 record');
+          }
+          res.records.push({
+            name: 'nrb_record_eui48',
+            eui48: colons(val.subarray(0, 6)),
+            entries: val.subarray(6)
+              .toString()
+              .split('\x00')
+              .slice(0, -1),
+          });
+          break;
+        case 0x0004:
+          if (recordValueLength < 10) {
+            throw new Error('Invalid nrb_record_eui64 record');
+          }
+          res.records.push({
+            name: 'nrb_record_eui64',
+            eui64: colons(val.subarray(0, 8)),
+            entries: val.subarray(8)
+              .toString()
+              .split('\x00')
+              .slice(0, -1),
+          });
+          break;
+      }
+    }
+    res.options = await this.#readOptions(block);
+    for (const o of res.options) {
+      if (o.data && ((o.optionType === 3) || (o.optionType === 4))) {
+        o.str = ipDecode(o.data);
+        delete o.data;
+      }
+    }
+    this.emit('names', res);
   }
 
   /**
