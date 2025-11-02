@@ -1,6 +1,12 @@
 
 # Overview
-@cto.af/pcap-ng-parser is a stream-based module to decode, print and analyze network traffic packets. With this module, you can read from an existing .pcapng file or connect it to an active stream.
+@cto.af/pcap-ng-parser is a stream-based module to decode, print and analyze
+network traffic packets. With this module, you can read from an existing
+.pcap or .pcapng file or connect it to an active stream.
+
+Implements:
+- [draft-ietf-opsawg-pcap-06](https://www.ietf.org/archive/id/draft-ietf-opsawg-pcap-06.html)
+- [draft-ietf-opsawg-pcapng-04](https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html)
 
 # Installation
 
@@ -128,6 +134,8 @@ The following things have been added:
 - Added Enhanced Packet flag decoding.
 - Added converting timestamps to JS Dates.  Does not handle timezones yet. (BREAKING)
 - Added generate API documentation.
+- Added implementation of old .pcap format, with auto-detection.
+- Added decoding of linkType names.
 
 [![Tests](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml/badge.svg)](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml)
 [![codecov](https://codecov.io/gh/cto-af/pcap-ng-parser/graph/badge.svg?token=Akjw67WYcn)](https://codecov.io/gh/cto-af/pcap-ng-parser)
