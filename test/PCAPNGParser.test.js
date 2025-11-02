@@ -11,15 +11,66 @@ import {
 import {Buffer} from 'node:buffer';
 import {NoFilter} from 'nofilter';
 import PCAPNGParser from '../src/PCAPNGParser.js';
+import {Stream} from 'node:stream';
 import {assert} from 'chai';
 import fs from 'node:fs';
 
 const pcapNgParser = new PCAPNGParser();
 
-function parseHex(hex, opts) {
-  const parser = new PCAPNGParser(opts);
-  const buf = Buffer.from(hex.replace(/\s/g, ''), 'hex');
-  parser.end(buf);
+function parseHex(hex, opts = {}) {
+  const {
+    interfaceTests, closeTests, dataTests, errorTests, resolve, reject, count,
+    ...rest
+  } = opts;
+  let waitingFor = count ?? Infinity;
+  const parser = new PCAPNGParser(rest);
+  if (resolve && reject) {
+    parser
+      .on('error', er => {
+        if (errorTests) {
+          errorTests();
+        } else {
+          reject(er);
+        }
+      })
+      .on('close', () => {
+        try {
+          if (Number.isFinite(waitingFor)) {
+            assert.equal(waitingFor, 0, `Expected ${count}, still waiting for ${waitingFor} packets`);
+          }
+          if (closeTests) {
+            closeTests();
+          }
+          resolve();
+        } catch (er) {
+          reject(er);
+        }
+      })
+      .on('data', pkt => {
+        waitingFor--;
+        try {
+          dataTests?.(pkt);
+        } catch (er) {
+          reject(er);
+        }
+      });
+    if (interfaceTests) {
+      parser.on('interface', i => {
+        try {
+          interfaceTests(i);
+        } catch (er) {
+          reject(er);
+        }
+      });
+    }
+  }
+  if (typeof hex === 'string') {
+    const buf = Buffer.from(hex.replace(/\s/g, ''), 'hex');
+    parser.end(buf);
+  }
+  if (hex instanceof Stream) {
+    hex.pipe(parser);
+  }
   return parser;
 }
 
@@ -118,6 +169,7 @@ describe('PCAPNGParser', () => {
         })
         .on('close', () => {
           try {
+            assert.equal(parser.ng, true);
             assert.equal(count, 6);
             resolve();
           } catch (er) {
@@ -364,21 +416,35 @@ ${hexBlock(INTERFACE_STATISTICS, `
       parseHex(`
 0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001C
 00000001 00000014 0001 0000 00000010 00000014
-00000003 00000014 00000003 01020300 00000014`)
-        .on('close', reject)
-        .on('error', reject)
-        .on('interface', i => {
+00000003 00000014 00000003 01020300 00000014`, {
+        resolve,
+        reject,
+        count: 1,
+        interfaceTests(i) {
           assert.equal(i.snapLen, 16);
-        })
-        .on('data', p => {
-          try {
-            assert.equal(p.originalPacketLength, 3);
-            assert.deepEqual(p.data, Buffer.from('010203', 'hex'));
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-        });
+        },
+        dataTests(p) {
+          assert.equal(p.originalPacketLength, 3);
+          assert.deepEqual(p.data, Buffer.from('010203', 'hex'));
+        },
+      });
+    }));
+
+    it('handles empty simple packets', () => new Promise((resolve, reject) => {
+      parseHex(`
+0A0D0D0A 0000001C 1A2B3C4D 0001 0000 FFFFFFFFFFFFFFFF 0000001C
+00000001 00000014 0001 0000 00000010 00000014
+00000003 00000010 00000000 00000010`, {
+        resolve,
+        reject,
+        count: 1,
+        interfaceTests(i) {
+          assert.equal(i.snapLen, 16);
+        },
+        dataTests(p) {
+          assert.equal(p.originalPacketLength, 0);
+        },
+      });
     }));
   });
 
@@ -677,7 +743,7 @@ ${hexBlock(CUSTOM_NOCOPY, '00007ed9 00000000')}`)
         .on('data', reject)
         .on('error', er => {
           try {
-            assert.match(er.message, /File not in pcapng format/);
+            assert.match(er.message, /Invalid file format/);
             resolve();
           } catch {
             reject(er);
@@ -816,4 +882,133 @@ ${hexBlock(CUSTOM_NOCOPY, '00007ed9 00000000')}`)
       parser.removeListener('data', foo);
     });
   });
+
+  describe('old PCAP format', () => {
+    it('handles the old format', () => new Promise((resolve, reject) => {
+      const bufferStream4 = fs.createReadStream('./test/buffer/buffer4');
+      parseHex(bufferStream4, {
+        resolve,
+        reject,
+        count: 6,
+      });
+    }));
+
+    it('handles BE micro', () => new Promise((resolve, reject) => {
+      parseHex(`
+A1B2C3D4 0002 0004 00000000 00000000 0000FFFF 00000001
+00000000 000003e8 00000001 00000001 61`, {
+        resolve,
+        reject,
+        count: 1,
+        dataTests(pkt) {
+          assert.deepEqual(pkt.data, Buffer.from('a'));
+          assert.deepEqual(pkt.timestamp, new Date('1970-01-01T00:00:00.001Z'));
+        },
+      });
+    }));
+
+    it('handles BE nano', () => new Promise((resolve, reject) => {
+      parseHex(`
+A1B23C4D 0002 0004 00000000 00000000 0000FFFF 00000001
+00000000 000f4240 00000001 00000001 61`, {
+        resolve,
+        reject,
+        count: 1,
+        dataTests(pkt) {
+          assert.deepEqual(pkt.data, Buffer.from('a'));
+          assert.deepEqual(pkt.timestamp, new Date('1970-01-01T00:00:00.001Z'));
+        },
+      });
+    }));
+
+    it('handles LE micro', () => new Promise((resolve, reject) => {
+      parseHex(`
+D4C3B2A1 0200 0400 00000000 00000000 FFFF0000 01000000
+00000000 e8030000 01000000 01000000 61`, {
+        resolve,
+        reject,
+        count: 1,
+        dataTests(pkt) {
+          assert.deepEqual(pkt.data, Buffer.from('a'));
+          assert.deepEqual(pkt.timestamp, new Date('1970-01-01T00:00:00.001Z'));
+        },
+      });
+    }));
+
+    it('handles LE nano', () => new Promise((resolve, reject) => {
+      parseHex(`
+4D3CB2A1 0200 0400 00000000 00000000 FFFF0000 01000000
+00000000 40420f00 01000000 01000000 61`, {
+        resolve,
+        reject,
+        count: 1,
+        dataTests(pkt) {
+          assert.deepEqual(pkt.data, Buffer.from('a'));
+          assert.deepEqual(pkt.timestamp, new Date('1970-01-01T00:00:00.001Z'));
+        },
+      });
+    }));
+
+    it('handles FCS', () => new Promise((resolve, reject) => {
+      parseHex(`
+A1B2C3D4 0002 0004 00000000 00000000 0000FFFF 24000001
+00000000 000003e8 00000001 00000001 61`, {
+        resolve,
+        reject,
+        count: 1,
+        interfaceTests(int) {
+          assert.deepEqual(int.options, [{
+            optionType: 13,
+            name: 'if_fcslen',
+            data: Buffer.from([32]),
+          }]);
+        },
+      });
+    }));
+
+    it('handles empty data in old format', () => new Promise((resolve, reject) => {
+      parseHex(`
+A1B2C3D4 0002 0004 00000000 00000000 0000FFFF 24000001
+00000000 000003e8 00000000 00000000`, {
+        resolve,
+        reject,
+        count: 1,
+        dataTests(pkt) {
+          assert.deepEqual(pkt.data, Buffer.alloc(0));
+        },
+      });
+    }));
+
+    it('handles AbortSignals in old format', () => new Promise((resolve, reject) => {
+      const ac = new AbortController();
+      const parser = new PCAPNGParser({signal: ac.signal})
+        .on('error', er => {
+          try {
+            assert.match(er.message, /aborted/);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        })
+        .on('interface', inter => {
+          try {
+            assert.deepEqual(inter, {
+              linkType: 1,
+              linkTypeName: 'ETHERNET',
+              snapLen: 65535,
+              tsresol: 1000000n,
+              tsoffset: 0n,
+              options: [],
+            });
+            setTimeout(() => ac.abort(), 10);
+          } catch (er) {
+            reject(er);
+          }
+        })
+        .on('data', reject)
+        .on('close', reject);
+      parser.write(Buffer.from('4D3CB2A1020004000000000000000000FFFF000001000000', 'hex'));
+    }));
+  });
 });
+

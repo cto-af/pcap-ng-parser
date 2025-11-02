@@ -12,8 +12,15 @@ import {
   SIMPLE_PACKET,
 } from './options.js';
 import {NoFilter, TruncationError} from 'nofilter';
+import {Buffer} from 'node:buffer';
+import {LINK_TYPE_NAMES} from './linkTypes.js';
 import {Transform} from 'node:stream';
 import {decode as ipDecode} from '@leichtgewicht/ip-codec';
+
+const PCAP_MAGIC_MICRO = 0xA1B2C3D4;
+const PCAP_MAGIC_NANO = 0xA1B23C4D;
+const PCAP_MAGIC_MICRO_LE = 0xD4C3B2A1;
+const PCAP_MAGIC_NANO_LE = 0x4D3CB2A1;
 
 /** @import {Readable, TransformCallback} from 'node:stream' */
 /** @import {OptionType} from './options.js' */
@@ -97,6 +104,7 @@ function colons(buf) {
 /**
  * @typedef {object} Interface
  * @property {number} linkType See https://datatracker.ietf.org/doc/html/draft-ietf-opsawg-pcaplinktype for info.
+ * @property {string} [linkTypeName]
  * @property {number} snapLen Capture length.
  * @property {string} [name] Interface name.
  * @property {bigint} tsoffset Offset, in MS, applied to each timestamp.
@@ -145,13 +153,13 @@ function colons(buf) {
 
 /**
  * @typedef {object} PacketFlags
- * @property {typeof EPB_FLAGS_DIRECTIONS[number]} direction
- * @property {typeof EPB_FLAGS_RECEPTION[number]} reception
+ * @property {typeof EPB_FLAGS_DIRECTIONS[number]} [direction]
+ * @property {typeof EPB_FLAGS_RECEPTION[number]} [reception]
  * @property {number} FCSlen
- * @property {boolean} noChecksum
- * @property {boolean} checksumValid
- * @property {boolean} TCPsegmentationOfflad
- * @property {typeof EPB_FLAGS_LINK_LAYER_ERRORS[number][]} linkLayerErrors
+ * @property {boolean} [noChecksum]
+ * @property {boolean} [checksumValid]
+ * @property {boolean} [TCPsegmentationOfflad]
+ * @property {typeof EPB_FLAGS_LINK_LAYER_ERRORS[number][]} [linkLayerErrors]
  */
 
 /**
@@ -286,6 +294,9 @@ export class PCAPNGParser extends Transform {
   /** @type {AbortSignal | undefined} */
   #signal = undefined;
 
+  /** Is this the -ng format, or the older format? */
+  #ng = true;
+
   // #region Transform
 
   /**
@@ -300,6 +311,15 @@ export class PCAPNGParser extends Transform {
       signal,
     });
     this.#signal = signal;
+  }
+
+  /**
+   * Is this file in the pcap-ng format?
+   *
+   * @returns If false, in the old pcap format.
+   */
+  get ng() {
+    return this.#ng;
   }
 
   /**
@@ -349,50 +369,130 @@ export class PCAPNGParser extends Transform {
   async #readFile(nof) {
     try {
       await nof.waitFor(4);
-      const magic = /** @type {Buffer} */(await nof.slice(0, 4));
-      if (magic.readUint32BE(0) !== SECTION_HEADER) {
-        throw new Error('File not in pcapng format');
-      }
-      while (true) {
-        const block = await this.#readBlock(nof);
-        if (!block) {
-          break;
+      const magic = /** @type {Buffer} */(nof.slice(0, 4)).readUint32BE(0);
+      if (magic === SECTION_HEADER) {
+        while (true) {
+          const block = await this.#readBlock(nof);
+          if (!block) {
+            break;
+          }
+          switch (block.blockType) {
+            case SECTION_HEADER:
+              await this.#processSectionHeader(block);
+              break;
+            case INTERFACE_DESCRIPTION:
+              await this.#processInterface(block);
+              break;
+            case SIMPLE_PACKET:
+              await this.#processSimplePacket(block);
+              break;
+            case NAME_RESOLUTION:
+              await this.#processNameResolution(block);
+              break;
+            case INTERFACE_STATISTICS:
+              await this.#processInterfaceStatistics(block);
+              break;
+            case ENHANCED_PACKET:
+              await this.#processEnhancedPacket(block);
+              break;
+            case DECRYPTION_SECRETS:
+              await this.#processDecryptionSecrets(block);
+              break;
+            case CUSTOM_COPY:
+            case CUSTOM_NOCOPY:
+              await this.#processCustom(block);
+              break;
+            default:
+              if (block.blockType >= 0) {
+                this.emit('blockType', block.blockType);
+              }
+              break;
+          }
         }
-        switch (block.blockType) {
-          case SECTION_HEADER:
-            await this.#processSectionHeader(block);
-            break;
-          case INTERFACE_DESCRIPTION:
-            await this.#processInterface(block);
-            break;
-          case SIMPLE_PACKET:
-            await this.#processSimplePacket(block);
-            break;
-          case NAME_RESOLUTION:
-            await this.#processNameResolution(block);
-            break;
-          case INTERFACE_STATISTICS:
-            await this.#processInterfaceStatistics(block);
-            break;
-          case ENHANCED_PACKET:
-            await this.#processEnhancedPacket(block);
-            break;
-          case DECRYPTION_SECRETS:
-            await this.#processDecryptionSecrets(block);
-            break;
-          case CUSTOM_COPY:
-          case CUSTOM_NOCOPY:
-            await this.#processCustom(block);
-            break;
-          default:
-            if (block.blockType >= 0) {
-              this.emit('blockType', block.blockType);
-            }
-            break;
-        }
+      } else if (magic === PCAP_MAGIC_MICRO) {
+        await this.#readPCAP(nof, 'BE', false);
+      } else if (magic === PCAP_MAGIC_MICRO_LE) {
+        await this.#readPCAP(nof, 'LE', false);
+      } else if (magic === PCAP_MAGIC_NANO) {
+        await this.#readPCAP(nof, 'BE', true);
+      } else if (magic === PCAP_MAGIC_NANO_LE) {
+        await this.#readPCAP(nof, 'LE', true);
+      } else {
+        throw new Error(`Invalid file format: magic = ${magic}`);
       }
     } catch (er) {
       this.emit('error', er);
+    }
+  }
+
+  /**
+   * Read an old-style PCAP file.
+   *
+   * @param {NoFilter} nof
+   * @param {Endianess} endian
+   * @param {boolean} nano
+   * @see https://www.ietf.org/archive/id/draft-ietf-opsawg-pcap-06.html
+   */
+  async #readPCAP(nof, endian, nano) {
+    this.#endianess = endian;
+    this.#ng = false;
+    const {linkType, snapLen} = await this.#readNumbers(
+      nof, BlockConfig.pcapHeaderFormat
+    );
+    const tsresol = nano ? 1000000n : 1000n;
+
+    /** @type {Interface} */
+    const int = {
+      linkType: linkType & 0xffff,
+      snapLen,
+      tsresol,
+      tsoffset: 0n,
+      options: [],
+    };
+    const ltName = LINK_TYPE_NAMES.get(int.linkType);
+    if (ltName) {
+      int.linkTypeName = ltName;
+    }
+    const fcsPresent = Boolean(linkType & 0x04000000);
+    if (fcsPresent) {
+      const FCSlen = linkType >> 28; // 16 bit words
+      int.options.push({
+        optionType: 13,
+        name: 'if_fcslen',
+        data: Buffer.from([FCSlen * 16]), // Bits
+      });
+    }
+    this.interfaces.push(int);
+    this.emit('interface', int);
+
+    while (true) {
+      try {
+        await nof.waitFor(4);
+      } catch (er) {
+        if (er instanceof TruncationError && er.size === 4) {
+          return;
+        }
+        throw er;
+      }
+      const {
+        timestampHigh, timestampLow, capturedPacketLength, originalPacketLength,
+      } = await this.#readNumbers(nof, BlockConfig.pcapPacketFormat);
+
+      const data = capturedPacketLength ?
+        /** @type {Buffer} */(await nof.readFull(capturedPacketLength)) :
+        Buffer.alloc(0);
+
+      /** @type {Packet} */
+      const pkt = {
+        interfaceId: 0,
+        timestamp: new Date(
+          (timestampHigh * 1000) + (timestampLow / Number(tsresol))
+        ),
+        originalPacketLength,
+        data,
+        options: [],
+      };
+      this.push(pkt);
     }
   }
 
@@ -563,7 +663,7 @@ export class PCAPNGParser extends Transform {
   /**
    * Read a set of numbers from the given input.
    *
-   * @template {BlockDescriptor} T
+   * @template {BlockDescriptor} T Describe the name/length pairs.
    * @param {NoFilter} nof
    * @param {T} blockDescriptor
    * @returns {Promise<Record<keyof T, number>>}
@@ -692,11 +792,15 @@ export class PCAPNGParser extends Transform {
     );
     const len = Math.min(originalPacketLength, int.snapLen);
 
+    const data = len ?
+      /** @type {Buffer} */(await block.data.read(len)) :
+      Buffer.alloc(0);
+
     /** @type {Packet} */
     const pkt = {
       interfaceId: 0,
       originalPacketLength,
-      data: /** @type {Buffer} */(await block.data.read(len)),
+      data,
       options: [],
     };
     // Skip dealing with padding
@@ -831,12 +935,16 @@ export class PCAPNGParser extends Transform {
       throw new Error(`Invalid interface ID: ${interfaceId} >= ${this.interfaces.length}`);
     }
 
+    const data = capturedPacketLength ?
+      /** @type {Buffer} */(block.data.read(capturedPacketLength)) :
+      Buffer.alloc(0);
+
     /** @type {Packet} */
     const pkt = {
       interfaceId,
       timestamp: this.#timestamp(timestampHigh, timestampLow, interfaceId),
       originalPacketLength,
-      data: /** @type {Buffer} */(block.data.read(capturedPacketLength)),
+      data,
       options: [],
     };
 
@@ -859,7 +967,7 @@ export class PCAPNGParser extends Transform {
         flags >>= 16;
         for (let i = 0; i < 8; i++) {
           if (flags & 0x1) {
-            pkt.flags.linkLayerErrors.push(EPB_FLAGS_LINK_LAYER_ERRORS[i]);
+            pkt.flags.linkLayerErrors?.push(EPB_FLAGS_LINK_LAYER_ERRORS[i]);
           }
           flags >>= 1;
         }
@@ -921,7 +1029,7 @@ export class PCAPNGParser extends Transform {
   // safe, including the new events added by this class.
 
   /**
-   * @template {keyof ParseEvents} K
+   * @template {keyof ParseEvents} K Event name.
    * @param {K} eventName
    * @param {ParseEvents[K]} args
    * @returns {boolean}
@@ -931,7 +1039,7 @@ export class PCAPNGParser extends Transform {
   }
 
   /**
-   * @template {keyof ParseEvents} K
+   * @template {keyof ParseEvents} K Event name.
    * @param {K} eventName
    * @param {(...args: ParseEvents[K]) => void} listener
    * @returns {this}
@@ -942,7 +1050,7 @@ export class PCAPNGParser extends Transform {
   }
 
   /**
-   * @template {keyof ParseEvents} K
+   * @template {keyof ParseEvents} K Event name.
    * @param {K} eventName
    * @param {(...args: ParseEvents[K]) => void} listener
    * @returns {this}
@@ -953,7 +1061,7 @@ export class PCAPNGParser extends Transform {
   }
 
   /**
-   * @template {keyof ParseEvents} K
+   * @template {keyof ParseEvents} K Event name.
    * @param {K} eventName
    * @param {(...args: ParseEvents[K]) => void} listener
    * @returns {this}
@@ -964,7 +1072,7 @@ export class PCAPNGParser extends Transform {
   }
 
   /**
-   * @template {keyof ParseEvents} K
+   * @template {keyof ParseEvents} K Event name.
    * @param {K} eventName
    * @param {(...args: ParseEvents[K]) => void} listener
    * @returns {this}
@@ -975,7 +1083,7 @@ export class PCAPNGParser extends Transform {
   }
 
   /**
-   * @template {keyof ParseEvents} K
+   * @template {keyof ParseEvents} K Event name.
    * @param {K} eventName
    * @param {(...args: ParseEvents[K]) => void} listener
    * @returns {this}
@@ -986,7 +1094,7 @@ export class PCAPNGParser extends Transform {
   }
 
   /**
-   * @template {keyof ParseEvents} K
+   * @template {keyof ParseEvents} K Event name.
    * @param {K} eventName
    * @param {(...args: ParseEvents[K]) => void} listener
    * @returns {this}
