@@ -18,42 +18,83 @@ $ npm install @cto.af/pcap-ng-parser
 
 # Usage
 
-## Via .pcapng File
+Note that the package on its own should work just fine in any modern JS
+runtime (including browsers).  However, reading from a file requires some
+runtime-dependent code.
+
+## Via .pcapng File for Node.js
 Here is a quick example of how to log out packets to the console from a valid .pcapng file named `myfile.pcapng`.
 
 ```javascript
-import PCAPNGParser from '@cto.af/pcap-ng-parser';
-import fs from 'node:fs';
+import {PCAPNGParser} from '@cto.af/pcap-ng-parser';
+import fs from 'node:fs/promises';
+const parser = new PCAPNGParser();
+const file = await fs.open('examples/res/myfile.pcapng');
 
-const pcapNgParser = new PCAPNGParser();
-const myFileStream = fs.createReadStream('./myfile.pcapng');
-
-myFileStream.pipe(pcapNgParser)
+parser
   .on('data', parsedPacket => {
     console.log(parsedPacket);
   })
   .on('interface', interfaceInfo => {
     console.log(interfaceInfo);
   });
+file.readableWebStream().pipeTo(parser);
 ```
 
-In the example above, we create a new Readable stream from our file and pipe the instance `pcapNgParser` which will read our packet data on the `_transform` event.
+In the example above, we create a new ReadableStream from our file and pipe to
+the instance `parser` which will cause various events to fire.
 
-## Via TCPDump
+## Via .pcapng file in Deno
+
+```js
+import {PCAPNGParser} from '@cto.af/pcap-ng-parser';
+const pcapNgParser = new PCAPNGParser();
+
+pcapNgParser
+  .on('data', parsedPacket => {
+    console.log(parsedPacket);
+  });
+
+const f = await Deno.open('examples/res/myfile.pcapng');
+f.readable.pipeTo(pcapNgParser);
+```
+
+## Via .pcapng file in Bun
+
+```js
+import {PCAPNGParser} from './src/index.ts';
+const pcapNgParser = new PCAPNGParser();
+
+pcapNgParser
+  .on('data', parsedPacket => {
+    console.log(parsedPacket);
+  })
+  .on('interface', interfaceInfo => {
+    console.log(interfaceInfo);
+  });
+
+const f = Bun.file('examples/res/myfile.pcapng');
+f.stream().pipeTo(pcapNgParser);
+```
+
+## Via TCPDump in Node.JS
 
 You can also pipe from TCPDump using `process.stdin` for a command line interaction.
 
 ```javascript
-import PCAPNGParser from '@cto.af/pcap-ng-parser';
+import {PCAPNGParser} from '@cto.af/pcap-ng-parser';
+import {Readable} from 'node:stream';
 const pcapNgParser = new PCAPNGParser();
 
-process.stdin.pipe(pcapNgParser)
+pcapNgParser
   .on('data', parsedPacket => {
     console.log(parsedPacket);
   })
   .on('interface', interfaceInfo => {
     console.log(interfaceInfo);
   });
+
+Readable.toWeb(process.stdin).pipeTo(pcapNgParser);
 ```
 
 ```bash
@@ -62,8 +103,7 @@ $ sudo tcpdump -w - | node exampleAbove.js
 
 Note that in order to utilize tcpdump you must be a superuser. Refer to [tcpdump documentation](http://www.tcpdump.org/manpages/tcpdump.1.html) for details.
 
-Further note: If you specify an interface to listen on with "-i", tcpdump no
-longer uses the pcapng format.
+Further note: If you specify an interface to listen on with "-i", tcpdump on some systems uses the old PCAP format, which PCAPNGParser will read just fine.
 
 ## Other Examples
 
@@ -136,6 +176,7 @@ The following things have been added:
 - Added generate API documentation.
 - Added implementation of old .pcap format, with auto-detection.
 - Added decoding of linkType names.
+- Switched to web streams and Uint8Array, for portability.  (BREAKING)
 
 [![Tests](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml/badge.svg)](https://github.com/cto-af/pcap-ng-parser/actions/workflows/node.js.yml)
 [![codecov](https://codecov.io/gh/cto-af/pcap-ng-parser/graph/badge.svg?token=Akjw67WYcn)](https://codecov.io/gh/cto-af/pcap-ng-parser)

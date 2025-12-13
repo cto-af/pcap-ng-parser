@@ -1,7 +1,10 @@
 .nyc_output
+.pnpm-store/
 .vscode
 coverage/
+doc/
+lib/
 node_modules
 sample_capture
+test/__screenshots__/
 types/
-doc/
