@@ -4,7 +4,7 @@
 /** @type {TypeDocOptions} */
 module.exports = {
   entryPoints: [
-    'src/PCAPNGParser.js',
+    'src/index.ts',
   ],
   out: 'doc',
   cleanOutputDir: true,

@@ -5,8 +5,10 @@
  * Link to ether-frame package: https://www.npmjs.com/package/ether-frame
  */
 
+import {Buffer} from 'node:buffer';
 import EtherFrame from 'ether-frame';
-import PCAPNGParser from '../src/PCAPNGParser.js';
+import {PCAPNGParser} from '../lib/index.mjs';
+import {Readable} from 'node:stream';
 import fs from 'node:fs';
 
 const pcapNgParser = new PCAPNGParser();
@@ -18,40 +20,52 @@ const myFileStream = filename === '-' ?
   process.stdin :
   fs.createReadStream(filename);
 
-myFileStream
-  .pipe(pcapNgParser)
-  .on('data', parsedPacket => {
-    console.log(parsedPacket);
-    try {
-      console.log(
-        EtherFrame.fromBuffer(parsedPacket.data, pcapNgParser.endianess)
-      );
-    } catch (ex) {
-      // Catches for type codes not currently supported by ether-frame
-      console.log('ETHERFRAME ERROR', ex.message);
-    }
-  })
-  .on('section', sectionHeader => {
-    console.log('SECTION', sectionHeader);
-  })
-  .on('interface', interfaceInfo => {
-    console.log('INTERFACE', interfaceInfo);
-  })
-  .on('names', nm => {
-    console.log('NAMES', nm);
-  })
-  .on('secrets', secrets => {
-    console.log('SECRETS', secrets);
-  })
-  .on('stats', stats => {
-    console.log('STATS', stats);
-  })
-  .on('custom', custom => {
-    console.log('CUSTOM', custom);
-  })
-  .on('blockType', t => {
-    console.log(`Unimplemented block type: ${t}`);
-  })
-  .on('error', er => {
-    console.log('ERROR', er);
-  });
+pcapNgParser.on('data', ev => {
+  console.log('PACKET', ev);
+  const buf = Buffer.from(ev.data);
+  try {
+    console.log(
+      EtherFrame.fromBuffer(buf, pcapNgParser.endianess)
+    );
+  } catch (ex) {
+    // Catches for type codes not currently supported by ether-frame
+    console.log('ETHERFRAME ERROR', ex.message);
+  }
+});
+
+pcapNgParser.addEventListener('section', ev => {
+  console.log('SECTION', ev.detail);
+});
+
+pcapNgParser.addEventListener('interface', ev => {
+  console.log('INTERFACE', ev.detail);
+});
+
+pcapNgParser.addEventListener('names', ev => {
+  console.log('NAMES', ev.detail);
+});
+
+pcapNgParser.addEventListener('secrets', ev => {
+  console.log('SECRETS', ev.detail);
+});
+
+pcapNgParser.addEventListener('stats', ev => {
+  console.log('STATS', ev.detail);
+});
+
+pcapNgParser.addEventListener('custom', ev => {
+  console.log('STATS', ev.detail);
+});
+
+pcapNgParser.addEventListener('blockType', ev => {
+  console.log(`Unimplemented block type: ${ev.detail}`);
+});
+
+pcapNgParser.addEventListener('error', ev => {
+  console.log('ERROR', ev.error);
+});
+
+pcapNgParser.on('close', () => {
+  console.log('CLOSE');
+});
+Readable.toWeb(myFileStream).pipeTo(pcapNgParser);

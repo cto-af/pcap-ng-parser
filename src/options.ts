@@ -8,21 +8,14 @@ export const DECRYPTION_SECRETS = 0xA;
 export const CUSTOM_COPY = 0x00000BAD;
 export const CUSTOM_NOCOPY = 0x40000BAD;
 
-/**
- * @typedef {'ipv4' | 'ipv6' | 'ipv4mask' | 'ipv6prefix' | 'eui' |
- *   'u32' | 'u64' | 'timestamp' | 'string' | undefined} OptionType
- */
+export type OptionType = 'ipv4' | 'ipv6' | 'ipv4mask' | 'ipv6prefix' | 'eui' |
+  'u32' | 'u64' | 'timestamp' | 'string' | undefined;
 
-/**
- * @typedef {[name: string, typ?: OptionType, pen?: boolean]} OptionDescription
- */
+export type OptionDescription = [name: string, typ?: OptionType, pen?: boolean];
 
-/** @typedef {Map<number, OptionDescription>} BlockOpts*/
+export type BlockOpts = Map<number, OptionDescription>;
 
-/**
- * @type {Map<number, BlockOpts>}
- */
-export const OPTION_NAMES = new Map([
+export const OPTION_NAMES = new Map<number, BlockOpts>([
   [SECTION_HEADER, /** @type {BlockOpts} */ (new Map([
     [1, ['opt_comment', 'string']],
     [2, ['shb_hardware', 'string']],
