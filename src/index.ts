@@ -155,8 +155,8 @@ export class PCAPNGParser
   #opts: Required<ParserOptions>;
 
   public constructor(opts: ParserOptions = {}) {
-    const nof = new DataViewWritableStream();
-    const writer = nof.getWriter();
+    const dv = new DataViewWritableStream();
+    const writer = dv.getWriter();
 
     let self: PCAPNGParser | undefined = undefined;
 
@@ -182,7 +182,7 @@ export class PCAPNGParser
       ...opts,
     };
 
-    this.#dv = nof;
+    this.#dv = dv;
     this.#readFile();
   }
 
