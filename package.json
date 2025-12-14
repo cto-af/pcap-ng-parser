@@ -5,8 +5,7 @@
   "main": "./lib/index.mjs",
   "type": "module",
   "files": [
-    "src",
-    "types",
+    "lib",
     "docs/LICENSE.md"
   ],
   "scripts": {
