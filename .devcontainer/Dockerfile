@@ -1,7 +1,7 @@
-FROM mcr.microsoft.com/devcontainers/javascript-node:4.0.5-trixie
+FROM mcr.microsoft.com/devcontainers/javascript-node
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-   && apt-get -y upgrade && apt-get install -y tcpdump
+   && apt-get -y upgrade
 
 RUN npm install -g playwright npm-check-updates
 
