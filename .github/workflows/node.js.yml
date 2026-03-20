@@ -8,3 +8,5 @@ jobs:
   build:
     uses: cto-af/workflows/.github/workflows/node-ci.yml@main
     secrets: inherit
+    with:
+      playwright: true
